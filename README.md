@@ -162,6 +162,7 @@ The whole interface speaks **English** and **Bahasa Indonesia**. Switch anytime 
 | `glowsh settings` | see every feature and whether it's on |
 | `glowsh <feature> on\|off` | toggle `greet`, `auto`, `seasonal`, `notify`, `typo`, `guard`, `stats` |
 | `glowsh notify <seconds>` · `glowsh notify test` | notification threshold / send a test notification |
+| `glowsh name <name>` · `glowsh name reset` | set the name shown in your prompt & greeting (saved, edit anytime) |
 | `glowsh lang en\|id` | switch language |
 | `glowsh update` | update to the latest version |
 | `glowsh uninstall` | restore your terminal to how it was |

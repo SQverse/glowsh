@@ -19,7 +19,7 @@
 #>
 
 # ============================================================ konfigurasi
-$GlowshVersion = '0.4.1'
+$GlowshVersion = '0.4.2'
 $GlowshRepoRaw = 'https://raw.githubusercontent.com/SQverse/glowsh/main'
 $GlowHome      = Join-Path $HOME '.glowsh'
 $BinDir        = Join-Path $GlowHome 'bin'
@@ -480,7 +480,7 @@ function glowsh {
     & (Join-Path $GlowshHome 'glowsh.ps1') @args
     try { $global:GlowshConfig = [IO.File]::ReadAllText((Join-Path $GlowshHome 'config.json')) | ConvertFrom-Json } catch {}
     $global:GlowshLang = [string](Get-GlowshSetting 'lang' 'id')
-    if ($args.Count -gt 0 -and $args[0] -in 'theme', 'wallpaper', 'import', 'browse', 'sync', 'auto', 'seasonal') { Initialize-GlowshPrompt }
+    if ($args.Count -gt 0 -and $args[0] -in 'theme', 'wallpaper', 'import', 'browse', 'name', 'sync', 'auto', 'seasonal') { Initialize-GlowshPrompt }
 }
 
 # ---------- bantuan salah ketik
@@ -677,7 +677,9 @@ if (Get-GlowshSetting 'greet' $true) {
 
         $__grIcon = ''
         if ($env:WT_SESSION) { $__grIcon = [string][char]$(if ($__grH -ge 6 -and $__grH -lt 18) { 0xF185 } else { 0xF186 }) + ' ' }
-        $__grLines = @("$__grE[1;38;2;${__grC1}m$__grIcon$__grGreet, $env:USERNAME!$__grE[0m")
+        $__grName = [string](Get-GlowshSetting 'name' $env:USERNAME)
+        if (-not $__grName.Trim()) { $__grName = $env:USERNAME }
+        $__grLines = @("$__grE[1;38;2;${__grC1}m$__grIcon$__grGreet, $__grName!$__grE[0m")
         $__grLines += "$__grE[38;2;${__grCm}m$($__grNow.ToString('dddd, d MMMM yyyy', $__grCulture))$__grE[0m"
         try {
             Add-Type -AssemblyName System.Windows.Forms
@@ -1310,8 +1312,23 @@ function Set-GlowshGitAutocorrect([bool]$On) {
 # ============================================================ menerapkan tema
 function New-SignaturePrompt($Theme) {
     $a = Get-ThemeAccents $Theme
-    return $GlowshPromptTemplate.Replace('__BG__', $Theme.Scheme.background).Replace('__A1__', $a.a1).Replace('__A2__', $a.a2).
+    $json = $GlowshPromptTemplate.Replace('__BG__', $Theme.Scheme.background).Replace('__A1__', $a.a1).Replace('__A2__', $a.a2).
         Replace('__A3__', $a.a3).Replace('__A4__', $a.a4).Replace('__OK__', $a.ok).Replace('__ERR__', $a.err).Replace('__MUTED__', $a.muted)
+    return (Set-GlowshPromptName $json)
+}
+
+# Nama tampilan pilihan user (glowsh name); $null = pakai nama user Windows
+function Get-GlowshDisplayName {
+    $n = [string](Get-GlowshConfig).name
+    if ([string]::IsNullOrWhiteSpace($n)) { return $null }
+    return $n
+}
+
+# Ganti {{ .UserName }} di config prompt dengan nama pilihan user (kalau ada)
+function Set-GlowshPromptName([string]$Json) {
+    $name = Get-GlowshDisplayName
+    if (-not $name) { return $Json }
+    return $Json.Replace('{{ .UserName }}', $name).Replace('{{.UserName}}', $name)
 }
 
 # Versi tanpa glyph Nerd Font untuk jendela console klasik: warna tetap, ikon diganti teks biasa
@@ -1459,7 +1476,7 @@ function Set-GlowshTheme([string]$Id, [switch]$Explicit) {
                 Invoke-WebRequest -UseBasicParsing -OutFile $cached `
                     -Uri "https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/$($t.Omp).omp.json"
             }
-            Copy-Item $cached $ThemeFile -Force
+            Write-Utf8NoBom $ThemeFile (Set-GlowshPromptName ([IO.File]::ReadAllText($cached)))
         } else { Write-Utf8NoBom $ThemeFile (New-SignaturePrompt $t) }
         Write-Utf8NoBom (Join-Path $GlowHome 'theme-lite.omp.json') (New-LitePrompt $t)
         Write-Ok "Prompt: $($t.Title)"
@@ -2330,6 +2347,7 @@ function Show-GlowshHelp {
         @("glowsh submit [$nm]",       'kirim temamu ke galeri',               'share your theme with the gallery'),
         @('glowsh doctor',             'cek & perbaiki masalah tampilan',      'diagnose & fix display problems'),
         @('glowsh settings',           'lihat & ubah fitur (on/off)',          'view & toggle features'),
+        @("glowsh name <$nm>",         'ganti nama di prompt & sapaan',        'set the name in your prompt & greeting'),
         @('glowsh lang id|en',         'ganti bahasa',                         'switch language'),
         @('glowsh update',             'update Glowsh ke versi terbaru',       'update Glowsh to the latest version'),
         @('glowsh uninstall',          'kembalikan tampilan seperti semula',   'restore your terminal to how it was')
@@ -2450,6 +2468,32 @@ if (-not $GlowshAsLibrary -and $MyInvocation.InvocationName -ne '.') {
             }
         }
         'explain' { Show-GlowshExplain $Arguments }
+        'name' {
+            $current = Get-GlowshDisplayName
+            if ($Arguments.Count -eq 0) {
+                Write-Host ''
+                Write-Host ('  ' + (L 'Nama sekarang: ' 'Current name: ')) -NoNewline
+                Write-Host $(if ($current) { $current } else { "$env:USERNAME " + (L '(nama Windows)' '(Windows name)') }) -ForegroundColor Cyan
+                Write-Host ('  ' + (L 'Ganti: glowsh name <nama baru>   Kembali ke nama Windows: glowsh name reset' 'Change: glowsh name <new name>   Back to the Windows name: glowsh name reset')) -ForegroundColor DarkGray
+                Write-Host ''
+                break
+            }
+            if ($arg1 -eq 'reset' -and $Arguments.Count -eq 1) {
+                Set-GlowshConfigValue 'name' $null
+                $shown = $env:USERNAME
+            } else {
+                # Buang karakter yang bisa merusak config prompt ({ } " \ `), batasi 24 karakter
+                $new = (($Arguments -join ' ') -replace '[{}"\\`]', '').Trim()
+                if ($new.Length -gt 24) { $new = $new.Substring(0, 24).Trim() }
+                if (-not $new) { Write-Bad (L 'Nama tidak boleh kosong.' 'The name cannot be empty.'); break }
+                Set-GlowshConfigValue 'name' $new
+                $shown = $new
+            }
+            # Terapkan ulang tema yang aktif supaya prompt memakai nama baru
+            [void](Set-GlowshTheme (Get-GlowshCurrentTheme) 6>$null)
+            Write-Ok ((L 'Nama sekarang: ' 'Name is now: ') + $shown)
+            Write-Host ('  ' + (L 'Prompt langsung berubah; sapaan berubah di tab baru.' 'The prompt updates now; the greeting updates in new tabs.')) -ForegroundColor DarkGray
+        }
         'why' { Show-GlowshWhy $Arguments }
         'wrapped' {
             $yr = (Get-Date).Year; $tmp = 0

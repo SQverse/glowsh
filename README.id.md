@@ -162,6 +162,7 @@ Seluruh tampilan tersedia dalam **Bahasa Indonesia** dan **English**. Ganti kapa
 | `glowsh settings` | lihat semua fitur dan statusnya |
 | `glowsh <fitur> on\|off` | nyalakan/matikan `greet`, `auto`, `seasonal`, `notify`, `typo`, `guard`, `stats` |
 | `glowsh notify <detik>` · `glowsh notify test` | batas waktu notifikasi / kirim notifikasi uji |
+| `glowsh name <nama>` · `glowsh name reset` | ganti nama di prompt & sapaan (tersimpan, bisa diubah kapan saja) |
 | `glowsh lang id\|en` | ganti bahasa |
 | `glowsh update` | update ke versi terbaru |
 | `glowsh uninstall` | kembalikan tampilan seperti semula |
