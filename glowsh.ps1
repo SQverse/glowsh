@@ -19,7 +19,7 @@
 #>
 
 # ============================================================ konfigurasi
-$GlowshVersion = '0.3.2'
+$GlowshVersion = '0.3.3'
 $GlowshRepoRaw = 'https://raw.githubusercontent.com/SQverse/glowsh/main'
 $GlowHome      = Join-Path $HOME '.glowsh'
 $BinDir        = Join-Path $GlowHome 'bin'
@@ -1237,6 +1237,35 @@ function Register-GlowshWtAlias {
     return $true
 }
 
+# Daftar tombol yang sudah dipakai di settings.json (format lama "actions" maupun format baru "keybindings")
+function Get-WTBoundKeys($Json) {
+    $keys = @()
+    foreach ($list in @($Json.actions, $Json.keybindings)) {
+        foreach ($a in @($list)) { if ($a -and $a.keys) { $keys += ([string]$a.keys).ToLower() } }
+    }
+    return $keys
+}
+
+# Windows Terminal hanya punya Ctrl+Shift+C/V bawaan; Ctrl+C/V biasanya ditambahkan di settings.json buatan WT sendiri.
+# File minimal buatan Glowsh tidak punya itu, jadi tambahkan di sini (hanya kalau tombolnya belum dipakai user).
+# Ctrl+C tetap menghentikan perintah kalau tidak ada teks yang diseleksi.
+function Add-WTCopyPasteKeys($Json) {
+    $bound = Get-WTBoundKeys $Json
+    $wanted = @(
+        @{ Keys = 'ctrl+c'; Id = 'Terminal.CopyToClipboard'; Legacy = [pscustomobject]@{ action = 'copy'; singleLine = $false } },
+        @{ Keys = 'ctrl+v'; Id = 'Terminal.PasteFromClipboard'; Legacy = 'paste' }
+    )
+    $newFormat = [bool]$Json.PSObject.Properties['keybindings']
+    foreach ($w in $wanted) {
+        if ($bound -contains $w.Keys) { continue }
+        if ($newFormat) {
+            Set-JsonProp $Json 'keybindings' (@(@($Json.keybindings) | Where-Object { $_ }) + [pscustomobject]@{ id = $w.Id; keys = $w.Keys })
+        } else {
+            Set-JsonProp $Json 'actions' (@(@($Json.actions) | Where-Object { $_ }) + [pscustomobject]@{ command = $w.Legacy; keys = $w.Keys })
+        }
+    }
+}
+
 function Update-WTSettings($Theme) {
     $fails = 0
     if ($PSVersionTable.PSVersion.Major -lt 6) {
@@ -1247,7 +1276,7 @@ function Update-WTSettings($Theme) {
     $unp = $WtTargets['unpackaged']
     if ((Test-Path $WtPortableExe) -and -not (Test-Path $unp)) {
         New-Item -ItemType Directory -Path (Split-Path $unp) -Force | Out-Null
-        Write-Utf8NoBom $unp '{ "$schema": "https://aka.ms/terminal-profiles-schema", "profiles": { "defaults": {}, "list": [] }, "schemes": [] }'
+        Write-Utf8NoBom $unp '{ "$schema": "https://aka.ms/terminal-profiles-schema", "keybindings": [], "profiles": { "defaults": {}, "list": [] }, "schemes": [] }'
     }
     $applied = 0
     foreach ($key in @($WtTargets.Keys)) {
@@ -1277,6 +1306,7 @@ function Update-WTSettings($Theme) {
             Set-JsonProp $d 'colorScheme' $Theme.Scheme.name
             Set-JsonProp $d 'opacity' 92
             Set-JsonProp $d 'useAcrylic' $true
+            Add-WTCopyPasteKeys $json
 
             Write-Utf8NoBom $path ($json | ConvertTo-Json -Depth 32)
             $applied++
@@ -1651,6 +1681,13 @@ function Invoke-GlowshDoctor {
             Add-Check WARN (L "Profil ini memakai font/tema sendiri sehingga mengabaikan Glowsh: $names" "These profiles have their own font/theme and ignore Glowsh: $names") `
                 (L 'Pengaturan per-profil selalu menang atas pengaturan default.' 'Per-profile settings always win over the defaults.') `
                 { param($p) Clear-WTProfileOverrides $p } (L "Hapus font/tema khusus di profil: $names" "Remove the custom font/theme from: $names") $path
+        }
+        $bound = Get-WTBoundKeys $json
+        if (($bound -contains 'ctrl+c') -and ($bound -contains 'ctrl+v')) {
+            Add-Check OK (L "Windows Terminal ($key): Ctrl+C / Ctrl+V untuk copy-paste" "Windows Terminal ($key): Ctrl+C / Ctrl+V copy & paste")
+        } else {
+            Add-Check WARN (L "Windows Terminal ($key): Ctrl+C / Ctrl+V belum bisa copy-paste" "Windows Terminal ($key): Ctrl+C / Ctrl+V do not copy & paste yet") `
+                (L 'Sementara pakai Ctrl+Shift+C / Ctrl+Shift+V.' 'Meanwhile use Ctrl+Shift+C / Ctrl+Shift+V.') $reapply (L 'Aktifkan Ctrl+C / Ctrl+V' 'Enable Ctrl+C / Ctrl+V')
         }
     }
     if (-not $foundSettings -and (Test-WindowsTerminal)) {
