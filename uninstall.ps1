@@ -22,7 +22,7 @@ $WtTargets = [ordered]@{
     preview    = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json'
     unpackaged = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\settings.json'
 }
-
+ 
 function Write-Step([string]$Text) { Write-Host ''; Write-Host "[*] $Text" -ForegroundColor Cyan }
 function Write-Ok([string]$Text)   { Write-Host "    [OK] $Text" -ForegroundColor Green }
 function Write-Note([string]$Text) { Write-Host "    [!]  $Text" -ForegroundColor Yellow }
