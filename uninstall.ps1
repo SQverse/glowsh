@@ -2,10 +2,10 @@
     Glowsh uninstaller - kembalikan tampilan terminal ke kondisi sebelum Glowsh.
 
     Dari PowerShell:
-        irm https://raw.githubusercontent.com/USERNAME/glowsh/main/uninstall.ps1 | iex
+        irm https://raw.githubusercontent.com/SQverse/glowsh/main/uninstall.ps1 | iex
 
     Dari CMD:
-        powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/USERNAME/glowsh/main/uninstall.ps1 | iex"
+        powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/SQverse/glowsh/main/uninstall.ps1 | iex"
 #>
 
 & {

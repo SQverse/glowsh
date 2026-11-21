@@ -1,78 +1,82 @@
 # ✨ Glowsh
 
-Bikin PowerShell & Command Prompt kamu jauh lebih cantik, **cukup dengan satu perintah**.
+**English** · [Bahasa Indonesia](README.id.md)
 
-Tidak perlu admin, Microsoft Store, maupun winget, dan semua perubahan bisa dikembalikan seperti semula kapan saja.
+Make your Windows terminal glow. Beautify PowerShell & Command Prompt with **one command**.
+
+No admin rights, no Microsoft Store, no winget, and everything can be reverted anytime.
 
 ## 🚀 Install
 
 **PowerShell:**
 
 ```powershell
-irm https://raw.githubusercontent.com/USERNAME/glowsh/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/SQverse/glowsh/main/install.ps1 | iex
 ```
 
 **Command Prompt (CMD):**
 
 ```cmd
-powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/USERNAME/glowsh/main/install.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/SQverse/glowsh/main/install.ps1 | iex"
 ```
 
-Pilih tema pakai tombol panah (ada preview-nya), ketik `Y`, lalu buka **Windows Terminal**. Selesai! 🎉
+Pick a theme with the arrow keys (with live preview), press `Y`, then open **Windows Terminal**. Done! 🎉
 
-## 🎨 Tema
+> 🌏 The installer and `glowsh` command currently speak **Bahasa Indonesia**. English UI is on the roadmap.
 
-**Tema khas Glowsh**, dengan prompt yang didesain khusus:
+## 🎨 Themes
 
-| Nama | Nuansa |
+**Glowsh signature themes**, with a custom-designed prompt:
+
+| Name | Vibe |
 |---|---|
-| `senja` | jingga & ungu langit sore |
-| `neon` | cyberpunk, kota malam penuh lampu |
-| `laut` | biru toska laut tropis & karang |
+| `senja` | *"dusk"*: orange & purple sunset sky |
+| `neon` | cyberpunk city lights at night |
+| `laut` | *"sea"*: tropical turquoise & coral |
 
-**Tema klasik:** `dracula`, `catppuccin`, `tokyonight`
+**Classic themes:** `dracula`, `catppuccin`, `tokyonight`
 
-Ganti tema kapan saja, tanpa install ulang:
+Switch themes anytime, no reinstall needed:
 
 ```powershell
-glowsh theme          # pilih dengan preview
-glowsh theme neon     # langsung pakai
+glowsh theme          # pick with live preview
+glowsh theme neon     # apply directly
 ```
 
 ## 🩺 Glowsh Doctor
 
-Ikon tampil sebagai kotak? Font tidak berubah? Jalankan:
+Icons showing up as boxes? Font didn't change? Run:
 
 ```powershell
 glowsh doctor
 ```
 
-Doctor mengecek font, Windows Terminal, profil PowerShell, Execution Policy, Clink, sampai pengaturan per-profil yang diam-diam menimpa tema. Hasilnya dijelaskan dalam bahasa yang mudah dipahami, dan sebagian besar masalah **bisa diperbaiki otomatis** cukup dengan menjawab `Y`.
+Doctor checks your fonts, Windows Terminal, PowerShell profile, Execution Policy, and Clink, and even catches per-profile settings that silently override your theme. Every issue comes with a plain-language explanation, and most of them **can be fixed automatically** by answering `Y`.
 
-## 🔧 Apa saja yang dipasang?
+## 🔧 What gets installed?
 
-- **Prompt cantik** dengan [Oh My Posh](https://ohmyposh.dev): ikon, git branch, status error, durasi perintah, dan jam
-- **Nerd Font** (Meslo) supaya ikon tampil dengan benar
-- **Ikon file & folder** saat `ls` / `dir` lewat [Terminal-Icons](https://github.com/devblackops/Terminal-Icons)
-- **Autocomplete prediktif** dari riwayat perintah (PSReadLine)
-- **CMD ikut cantik**: prompt yang sama + autocomplete lewat [Clink](https://github.com/chrisant996/clink)
-- **Windows Terminal**: diinstall otomatis kalau belum ada (rilis resmi Microsoft dari GitHub), lengkap dengan skema warna, font, dan efek transparan
-- **Perintah `glowsh`** untuk ganti tema, doctor, dan uninstall
+- **A beautiful prompt** powered by [Oh My Posh](https://ohmyposh.dev): icons, git branch, error status, command duration, clock
+- **Nerd Font** (Meslo) so icons render correctly
+- **File & folder icons** in `ls` / `dir` via [Terminal-Icons](https://github.com/devblackops/Terminal-Icons)
+- **Predictive autocomplete** from your command history (PSReadLine)
+- **CMD gets the same treatment**: same prompt + autocomplete via [Clink](https://github.com/chrisant996/clink)
+- **Windows Terminal**: installed automatically if missing (official Microsoft release from GitHub), with color scheme, font, and translucency
+- **The `glowsh` command** for switching themes, running doctor, and uninstalling
 
-Semua file Glowsh ada di `~\.glowsh`. Pengaturan asli kamu di-backup ke `~\.glowsh\backup-original` sebelum ada yang diubah.
+All Glowsh files live in `~\.glowsh`. Your original settings are backed up to `~\.glowsh\backup-original` before anything is changed.
 
-> 💡 Ikon & font Nerd Font hanya tampil di **Windows Terminal**, tidak di jendela CMD/PowerShell klasik.
+> 💡 Nerd Font icons only render in **Windows Terminal**, not in the classic CMD/PowerShell console window.
 
-## 📋 Semua perintah
+## 📋 Commands
 
-| Perintah | Fungsi |
+| Command | What it does |
 |---|---|
-| `glowsh theme` | pilih tema dengan preview |
-| `glowsh theme <nama>` | langsung pakai tema |
-| `glowsh theme list` | daftar tema |
-| `glowsh doctor` | cek & perbaiki masalah tampilan |
-| `glowsh uninstall` | kembalikan tampilan seperti semula |
-| `glowsh version` | versi Glowsh |
+| `glowsh theme` | pick a theme with live preview |
+| `glowsh theme <name>` | apply a theme directly |
+| `glowsh theme list` | list all themes |
+| `glowsh doctor` | diagnose & fix display issues |
+| `glowsh uninstall` | restore your terminal to how it was |
+| `glowsh version` | show Glowsh version |
 
 ## ↩️ Uninstall
 
@@ -80,41 +84,50 @@ Semua file Glowsh ada di `~\.glowsh`. Pengaturan asli kamu di-backup ke `~\.glow
 glowsh uninstall
 ```
 
-Atau tanpa perintah `glowsh`:
+Or without the `glowsh` command:
 
 ```powershell
-irm https://raw.githubusercontent.com/USERNAME/glowsh/main/uninstall.ps1 | iex
+irm https://raw.githubusercontent.com/SQverse/glowsh/main/uninstall.ps1 | iex
 ```
 
-## 🔒 Keamanan
+## 🔒 Security
 
-Menjalankan script dari internet selalu butuh kepercayaan. Karena itu, script Glowsh:
+Running a script from the internet always requires trust. That's why Glowsh:
 
-- ditulis polos tanpa obfuscation, jadi bisa kamu baca sendiri sebelum dijalankan ([install.ps1](install.ps1), [glowsh.ps1](glowsh.ps1)),
-- menampilkan daftar perubahan dan meminta konfirmasi dulu,
-- tidak butuh hak admin,
-- membuat backup sebelum mengubah apa pun,
-- hanya mengunduh dari sumber resmi (GitHub Microsoft, Oh My Posh, Clink, PowerShell Gallery).
+- is plain, readable PowerShell with no obfuscation, so you can read it before running it ([install.ps1](install.ps1), [glowsh.ps1](glowsh.ps1)),
+- shows a list of every change and asks for confirmation first,
+- never needs admin rights,
+- backs up your settings before changing anything,
+- only downloads from official sources (Microsoft's GitHub, Oh My Posh, Clink, PowerShell Gallery).
+
+## ✅ Requirements
+
+- Windows 10 (build 19041+) or Windows 11
+- Windows PowerShell 5.1 (built in) or PowerShell 7+
 
 ## 🛠️ Development
 
-| File | Isi |
+| File | Purpose |
 |---|---|
-| `install.ps1` | urutan instalasi (tipis, memanggil fungsi di `glowsh.ps1`) |
-| `glowsh.ps1` | tema, penerapan tema, pemilih tema, doctor, perintah `glowsh` |
-| `uninstall.ps1` | mengembalikan semuanya (berdiri sendiri, bisa jalan via `iex`) |
+| `install.ps1` | installation flow (thin, calls functions in `glowsh.ps1`) |
+| `glowsh.ps1` | themes, theme application, theme picker, doctor, `glowsh` command |
+| `uninstall.ps1` | reverts everything (standalone, works via `iex`) |
 
-Test lokal tanpa GitHub:
+Test locally without GitHub:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-Opsi non-interaktif: `$env:GLOWSH_THEME = 'neon'; $env:GLOWSH_YES = '1'`
+Non-interactive options: `$env:GLOWSH_THEME = 'neon'; $env:GLOWSH_YES = '1'`
 
 ## 🗺️ Roadmap
 
-- [ ] Bilingual (Indonesia / English) otomatis mengikuti bahasa Windows
-- [ ] `glowsh export` / `glowsh import` untuk berbagi tema
-- [ ] Startup lebih cepat dengan cache prompt
-- [ ] Lebih banyak tema khas Glowsh
+- [ ] English UI (auto-detected from Windows language)
+- [ ] `glowsh export` / `glowsh import` to share themes
+- [ ] Faster startup with prompt caching
+- [ ] More signature themes
+
+## 🙏 Credits
+
+Glowsh stands on the shoulders of [Oh My Posh](https://github.com/JanDeDobbeleer/oh-my-posh), [Nerd Fonts](https://www.nerdfonts.com), [Terminal-Icons](https://github.com/devblackops/Terminal-Icons), [Clink](https://github.com/chrisant996/clink), and [Windows Terminal](https://github.com/microsoft/terminal). Classic color schemes: [Dracula](https://draculatheme.com), [Catppuccin](https://catppuccin.com), [Tokyo Night](https://github.com/enkia/tokyo-night-vscode-theme).

@@ -19,7 +19,7 @@ param(
 
 # ============================================================ konfigurasi
 $GlowshVersion = '0.2.0'
-$GlowshRepoRaw = 'https://raw.githubusercontent.com/USERNAME/glowsh/main'
+$GlowshRepoRaw = 'https://raw.githubusercontent.com/SQverse/glowsh/main'
 $GlowHome      = Join-Path $HOME '.glowsh'
 $BinDir        = Join-Path $GlowHome 'bin'
 $OmpExe        = Join-Path $BinDir 'oh-my-posh.exe'

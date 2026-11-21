@@ -2,10 +2,10 @@
     Glowsh - bikin PowerShell & CMD kamu lebih cantik dalam satu perintah.
 
     Install (dari PowerShell):
-        irm https://raw.githubusercontent.com/USERNAME/glowsh/main/install.ps1 | iex
+        irm https://raw.githubusercontent.com/SQverse/glowsh/main/install.ps1 | iex
 
     Install (dari CMD):
-        powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/USERNAME/glowsh/main/install.ps1 | iex"
+        powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/SQverse/glowsh/main/install.ps1 | iex"
 
     Opsi (opsional, lewat environment variable):
         $env:GLOWSH_THEME = 'neon'  # pilih tema langsung tanpa menu (nama atau nomor)
@@ -25,7 +25,7 @@ try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 } catch {}
 
-$RepoRawUrl = 'https://raw.githubusercontent.com/USERNAME/glowsh/main'
+$RepoRawUrl = 'https://raw.githubusercontent.com/SQverse/glowsh/main'
 $src = $__glowshSource
 Remove-Variable -Name __glowshSource -Scope 1 -ErrorAction SilentlyContinue
 
