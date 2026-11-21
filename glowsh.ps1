@@ -19,7 +19,7 @@
 #>
 
 # ============================================================ konfigurasi
-$GlowshVersion = '0.3.1'
+$GlowshVersion = '0.3.2'
 $GlowshRepoRaw = 'https://raw.githubusercontent.com/SQverse/glowsh/main'
 $GlowHome      = Join-Path $HOME '.glowsh'
 $BinDir        = Join-Path $GlowHome 'bin'
@@ -1885,13 +1885,24 @@ if (-not $GlowshAsLibrary -and $MyInvocation.InvocationName -ne '.') {
         }
         'update' {
             Write-Step (L 'Mengunduh Glowsh terbaru...' 'Downloading the latest Glowsh...')
-            # Proses baru supaya installer mengunduh file terbaru dari GitHub (bukan memakai salinan lokal)
+            # Installer diunduh ke folder sementara lalu dijalankan dengan -File (tanpa iex & tanpa urusan tanda kutip).
+            # Folder itu hanya berisi install.ps1, jadi installer akan mengunduh glowsh.ps1 terbaru dari GitHub.
+            # ?t=... mencegah GitHub memberi salinan lama dari cache.
+            $tmpDir = Join-Path $env:TEMP "glowsh-update-$PID"
+            New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+            $tmpInstaller = Join-Path $tmpDir 'install.ps1'
             $env:GLOWSH_THEME = [string](Get-GlowshConfig).baseTheme
             if (-not $env:GLOWSH_THEME) { $env:GLOWSH_THEME = Get-GlowshCurrentTheme }
             $env:GLOWSH_LANG = $GlowshLang
             try {
-                & "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "irm '$GlowshRepoRaw/install.ps1' | iex"
-            } finally { Remove-Item Env:GLOWSH_THEME, Env:GLOWSH_LANG -ErrorAction SilentlyContinue }
+                Invoke-WebRequest -UseBasicParsing -Uri "$GlowshRepoRaw/install.ps1?t=$([DateTime]::UtcNow.Ticks)" -OutFile $tmpInstaller
+                & "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $tmpInstaller
+            } catch {
+                Write-Bad (L "Update gagal: $($_.Exception.Message)" "Update failed: $($_.Exception.Message)")
+            } finally {
+                Remove-Item Env:GLOWSH_THEME, Env:GLOWSH_LANG -ErrorAction SilentlyContinue
+                Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+            }
         }
         'uninstall' {
             $u = Join-Path $GlowHome 'uninstall.ps1'

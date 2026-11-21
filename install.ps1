@@ -38,7 +38,7 @@ try {
     foreach ($f in 'glowsh.ps1', 'uninstall.ps1') {
         $local = if ($src) { Join-Path $src $f } else { $null }
         if ($local -and (Test-Path $local)) { Copy-Item $local (Join-Path $staging $f) -Force }
-        else { Invoke-WebRequest -UseBasicParsing -Uri "$RepoRawUrl/$f" -OutFile (Join-Path $staging $f) }
+        else { Invoke-WebRequest -UseBasicParsing -Uri "$RepoRawUrl/${f}?t=$([DateTime]::UtcNow.Ticks)" -OutFile (Join-Path $staging $f) }   # ?t= melewati cache GitHub
     }
 } catch {
     Write-Host "  Gagal mengambil file Glowsh / could not download Glowsh: $($_.Exception.Message)" -ForegroundColor Red
