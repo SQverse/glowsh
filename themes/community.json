@@ -1,0 +1,33 @@
+{
+    "$comment":  "Galeri tema komunitas Glowsh. Tambah tema lewat: glowsh submit",
+    "themes":  [
+                   {
+                       "name":  "Kopi Susu",
+                       "author":  "SQverse",
+                       "desc_id":  "cokelat hangat ala kopi susu",
+                       "desc_en":  "warm coffee-with-milk browns",
+                       "code":  "GLW-AQAeFhLy5trUo3PpxGrAcD_0omGPv2rnb1GMe25Lb3BpIFN1c3U"
+                   },
+                   {
+                       "name":  "Sakura",
+                       "author":  "SQverse",
+                       "desc_id":  "pink lembut bunga sakura",
+                       "desc_en":  "soft cherry blossom pinks",
+                       "code":  "GLW-AQAfFCD76fD_nsT_yN294P7NtNuo5s__a4ucgZlTYWt1cmE"
+                   },
+                   {
+                       "name":  "Matcha",
+                       "author":  "SQverse",
+                       "desc_id":  "hijau teh matcha yang kalem",
+                       "desc_en":  "calm matcha greens",
+                       "code":  "GLW-AQASGhTo8-WLw0rF4aVNtqz_1U-czGXvb2xui3JNYXRjaGE"
+                   },
+                   {
+                       "name":  "Bromo",
+                       "author":  "SQverse",
+                       "desc_id":  "matahari terbit di Gunung Bromo",
+                       "desc_en":  "sunrise over Mount Bromo",
+                       "code":  "GLW-AQAVEh_x6fX_e1T_1W96hra5g_9704n_XFyFgJpCcm9tbw"
+                   }
+               ]
+}

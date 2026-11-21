@@ -107,6 +107,40 @@ Perintah yang berjalan 30 detik atau lebih akan memunculkan notifikasi Windows s
 
 Ikon tampil sebagai kotak? Font tidak berubah? `glowsh doctor` mengecek semuanya: font, Windows Terminal, profil, Execution Policy, Clink, sampai pengaturan per-profil yang diam-diam menimpa tema. Sebagian besar masalah **bisa diperbaiki otomatis** cukup dengan menjawab `Y`.
 
+### 🎁 Glowsh Wrapped: rekap tahunan terminal kamu
+
+```powershell
+glowsh wrapped
+```
+
+Mirip Spotify Wrapped, tapi untuk terminal: total perintah, 5 perintah favorit, subperintah andalan, streak terpanjang, jam paling produktif, tingkat sukses, salah ketik yang diselamatkan Glowsh, dan persona terminal kamu (*Anak Malam*, *Raja Commit*, ...). Glowsh juga bisa menyimpannya sebagai **gambar 1080×1920** untuk story IG.
+
+> 🔒 Glowsh hanya mencatat **nama perintahnya** (misalnya `git push` atau `curl`), tidak pernah argumennya, jadi token atau password yang terketik di perintah tidak pernah tersimpan. Datanya hanya ada di laptop kamu, di `~\.glowsh\stats.log`. Matikan dengan `glowsh stats off`.
+
+### 🩹 `glowsh why`: penjelasan error terakhir
+
+```
+❯ npm start
+  Error: listen EADDRINUSE: address already in use :::3000
+❯ glowsh why
+  Port sedang dipakai
+  Port 3000 sudah dipakai program lain, biasanya server yang masih jalan di tab lain.
+  Coba ini:
+    1. Cari pemakainya: Get-NetTCPConnection -LocalPort 3000 | Select-Object OwningProcess
+    2. Hentikan: Stop-Process -Id <OwningProcess>
+```
+
+Mengenali sekitar 20 error umum: port terpakai, modul tidak ditemukan, push ditolak, merge conflict, login git gagal, script diblokir, masalah jaringan dan SSL, dan lainnya. Untuk error dari program lain, copy pesannya (seleksi lalu Ctrl+C) lalu jalankan `glowsh why`, atau tempel langsung: `glowsh why "pesan error"`.
+
+### 🖼️ Galeri tema komunitas
+
+```powershell
+glowsh browse          # jelajahi & pasang tema buatan komunitas, ada preview-nya
+glowsh submit          # kirim tema kamu ke galeri
+```
+
+`glowsh submit` membuka GitHub Issue yang sudah terisi kode temamu. Tema yang disetujui dimasukkan ke [`themes/community.json`](themes/community.json) dan muncul di `glowsh browse` semua orang.
+
 ### 🌏 Dua bahasa
 
 Seluruh tampilan tersedia dalam **Bahasa Indonesia** dan **English**. Ganti kapan saja dengan `glowsh lang id` / `glowsh lang en`.
@@ -120,9 +154,13 @@ Seluruh tampilan tersedia dalam **Bahasa Indonesia** dan **English**. Ganti kapa
 | `glowsh share [nama]` | bagikan tema sebagai kode |
 | `glowsh import <kode> [nama]` | pasang tema dari kode |
 | `glowsh explain <perintah>` | jelaskan sebuah perintah |
+| `glowsh why ["error"]` | jelaskan error terakhir dan solusinya |
+| `glowsh wrapped [tahun]` | rekap tahunan terminal kamu (+ gambar story IG) |
+| `glowsh browse` | galeri tema komunitas |
+| `glowsh submit [nama]` | kirim tema ke galeri |
 | `glowsh doctor` | cek & perbaiki masalah tampilan |
 | `glowsh settings` | lihat semua fitur dan statusnya |
-| `glowsh <fitur> on\|off` | nyalakan/matikan `greet`, `auto`, `seasonal`, `notify`, `typo`, `guard` |
+| `glowsh <fitur> on\|off` | nyalakan/matikan `greet`, `auto`, `seasonal`, `notify`, `typo`, `guard`, `stats` |
 | `glowsh notify <detik>` · `glowsh notify test` | batas waktu notifikasi / kirim notifikasi uji |
 | `glowsh lang id\|en` | ganti bahasa |
 | `glowsh update` | update ke versi terbaru |

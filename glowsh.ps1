@@ -19,7 +19,7 @@
 #>
 
 # ============================================================ konfigurasi
-$GlowshVersion = '0.3.3'
+$GlowshVersion = '0.4.0'
 $GlowshRepoRaw = 'https://raw.githubusercontent.com/SQverse/glowsh/main'
 $GlowHome      = Join-Path $HOME '.glowsh'
 $BinDir        = Join-Path $GlowHome 'bin'
@@ -53,6 +53,7 @@ $GlowshToggles = [ordered]@{
     notify   = @($true,  'notifikasi saat perintah lama selesai', 'notification when a long command finishes')
     typo     = @($true,  'saran saat salah ketik perintah', 'suggestions for mistyped commands')
     guard    = @($true,  'peringatan sebelum perintah berbahaya', 'warning before dangerous commands')
+    stats    = @($true,  'catat statistik untuk glowsh wrapped (nama perintah saja, disimpan lokal)', 'record stats for glowsh wrapped (command names only, stored locally)')
 }
 
 # ============================================================ kode bersama (juga ditanam ke shell.ps1)
@@ -109,6 +110,21 @@ function Get-GlowshDanger([string]$Line) {
     )
     foreach ($r in $rules) { if ($Line -match $r.P) { return (Get-GlowshText $r.Id $r.En) } }
     return $null
+}
+
+# Ambil "nama perintah" saja dari satu baris perintah, untuk statistik glowsh wrapped.
+# Argumen sengaja dibuang (bisa berisi token/password); hanya subperintah umum yang disimpan (git push, npm install).
+function Get-GlowshCommandHead([string]$Line) {
+    $t = ([string]$Line).Trim() -replace '^[&.]\s+', ''
+    if (-not $t) { return $null }
+    $parts = @($t -split '\s+' | Where-Object { $_ })
+    $cmd = $parts[0].Trim('"', "'")
+    try { $cmd = [IO.Path]::GetFileName($cmd) } catch {}
+    $cmd = ($cmd -replace '\.(exe|cmd|bat|ps1)$', '').ToLower()
+    if ($cmd -notmatch '^[a-z0-9][\w.-]{0,39}$') { return $null }
+    $withSub = 'git', 'npm', 'pnpm', 'yarn', 'bun', 'winget', 'docker', 'pip', 'dotnet', 'cargo', 'go', 'gh', 'glowsh', 'scoop', 'choco', 'kubectl', 'composer', 'php', 'flutter', 'ng'
+    if ($withSub -contains $cmd -and $parts.Count -gt 1 -and $parts[1] -match '^[a-z][a-z0-9-]{0,20}$') { return "$cmd $($parts[1])" }
+    return $cmd
 }
 
 function Format-GlowshDuration([TimeSpan]$T) {
@@ -397,7 +413,7 @@ function Initialize-GlowshPrompt {
     function global:prompt {
         $ok = $?
         $code = $global:LASTEXITCODE
-        try { Invoke-GlowshPromptHook $ok } catch {}
+        try { Invoke-GlowshPromptHook $ok $code } catch {}
         $global:LASTEXITCODE = $code
         if (-not $ok) { Write-Error 'glowsh' -ErrorAction Ignore }   # pertahankan status gagal untuk prompt
         & $global:__glowshPrompt
@@ -418,12 +434,32 @@ function Sync-GlowshTheme([switch]$Startup) {
 # ---------- notifikasi perintah lama
 $global:__glowshLastId = 0
 $global:__glowshNextSync = (Get-Date).AddMinutes(5)
-function Invoke-GlowshPromptHook([bool]$Ok = $true) {
+$global:__glowshErrTop = $null
+if ($global:Error.Count -gt 0) { $global:__glowshErrTop = $global:Error[0] }
+
+# Catatan lokal untuk glowsh wrapped: waktu, sukses/gagal, durasi, NAMA perintah saja (tanpa argumen)
+function Add-GlowshStat([string]$Head, [bool]$Ok = $true, [long]$Ms = 0, $Time = $null) {
+    if (-not $Head -or -not (Get-GlowshSetting 'stats' $true)) { return }
+    if (-not $Time) { $Time = Get-Date }
+    $row = @($Time.ToString('yyyy-MM-ddTHH:mm:ss'), [int]$Ok, $Ms, $Head) -join "`t"
+    try { [IO.File]::AppendAllText((Join-Path $GlowshHome 'stats.log'), $row + "`n") } catch {}
+}
+
+function Invoke-GlowshPromptHook([bool]$Ok = $true, $ExitCode = $null) {
     $h = Get-History -Count 1
+    # Error PowerShell terbaru (dibandingkan dengan yang terakhir kita lihat; $Error dibatasi 256 item)
+    $newErr = $null
+    if ($global:Error.Count -gt 0 -and -not [object]::ReferenceEquals($global:Error[0], $global:__glowshErrTop)) { $newErr = $global:Error[0] }
+    if ($global:Error.Count -gt 0) { $global:__glowshErrTop = $global:Error[0] }
     if ($h -and $h.Id -ne $global:__glowshLastId) {
         $global:__glowshLastId = $h.Id
+        $dur = $h.EndExecutionTime - $h.StartExecutionTime
+        Add-GlowshStat (Get-GlowshCommandHead ([string]$h.CommandLine)) $Ok ([long]$dur.TotalMilliseconds) $h.StartExecutionTime
+        # Simpan kegagalan terakhir untuk "glowsh why"
+        if (-not $Ok) {
+            $global:GlowshLastFailure = [pscustomobject]@{ Line = [string]$h.CommandLine; ExitCode = $ExitCode; Error = $newErr; Time = Get-Date }
+        }
         if (Get-GlowshSetting 'notify' $true) {
-            $dur = $h.EndExecutionTime - $h.StartExecutionTime
             if ($dur.TotalSeconds -ge [double](Get-GlowshSetting 'notifySeconds' 30)) {
                 $cmd = [string]$h.CommandLine
                 if ($cmd.Length -gt 60) { $cmd = $cmd.Substring(0, 57) + '...' }
@@ -443,7 +479,7 @@ function glowsh {
     & (Join-Path $GlowshHome 'glowsh.ps1') @args
     try { $global:GlowshConfig = [IO.File]::ReadAllText((Join-Path $GlowshHome 'config.json')) | ConvertFrom-Json } catch {}
     $global:GlowshLang = [string](Get-GlowshSetting 'lang' 'id')
-    if ($args.Count -gt 0 -and $args[0] -in 'theme', 'wallpaper', 'import', 'sync', 'auto', 'seasonal') { Initialize-GlowshPrompt }
+    if ($args.Count -gt 0 -and $args[0] -in 'theme', 'wallpaper', 'import', 'browse', 'sync', 'auto', 'seasonal') { Initialize-GlowshPrompt }
 }
 
 # ---------- bantuan salah ketik
@@ -499,7 +535,7 @@ function Get-GlowshSuggestion([string]$Name) {
     if ($linux.ContainsKey($n)) {
         $e = $linux[$n]
         if ($e.Run) {
-            return @{ Message = (Get-GlowshText "'$Name' adalah perintah Linux. Padanannya di PowerShell:" "'$Name' is a Linux command. The PowerShell equivalent is:"); Display = $e.Show; Run = $e.Run }
+            return @{ Kind = 'linux'; Message = (Get-GlowshText "'$Name' adalah perintah Linux. Padanannya di PowerShell:" "'$Name' is a Linux command. The PowerShell equivalent is:"); Display = $e.Show; Run = $e.Run }
         }
         return @{ Message = (Get-GlowshText "'$Name' adalah perintah Linux. " "'$Name' is a Linux command. ") + (Get-GlowshText $e.Hint[0] $e.Hint[1]) }
     }
@@ -537,6 +573,7 @@ function Get-GlowshSuggestion([string]$Name) {
     $safe = $best.Replace("'", "''")
     return @{
         Message = (Get-GlowshText "Perintah '$Name' tidak dikenal. Mungkin maksud kamu:" "Unknown command '$Name'. Did you mean:")
+        Kind = 'typo'
         Display = $best
         Run = [scriptblock]::Create("if (`$MyInvocation.ExpectingInput) { `$input | & '$safe' @args } else { & '$safe' @args }")
     }
@@ -565,6 +602,9 @@ if (Get-GlowshSetting 'typo' $true) {
                 $k = [Console]::ReadKey($true)
                 Write-Host $k.KeyChar
                 if ($k.Key -eq 'Enter' -or $k.KeyChar -eq 'y' -or $k.KeyChar -eq 'Y') {
+                    # Untuk wrapped: "berapa kali Glowsh menyelamatkan salah ketik kamu"
+                    if ($s.Kind -eq 'typo') { Add-GlowshStat ('__typo:' + $Name.ToLower() + '>' + $s.Display.ToLower()) }
+                    else { Add-GlowshStat ('__linux:' + $Name.ToLower()) }
                     $CmdArgs.CommandScriptBlock = $s.Run
                     $CmdArgs.StopSearch = $true
                     return
@@ -1448,8 +1488,13 @@ function Get-ThemeTag($Theme) {
     return ' '
 }
 
-function Show-ThemePicker([string]$CurrentId = 'senja') {
-    $ids = @($GlowshThemes.Keys)
+# -Themes/-Heading/-Legend dipakai ulang oleh galeri komunitas (glowsh browse)
+function Show-ThemePicker([string]$CurrentId = 'senja', $Themes = $null, [string]$Heading = '', [string]$Legend = '') {
+    if (-not $Themes) { $Themes = $GlowshThemes }
+    if (-not $Heading) { $Heading = L 'pilih tema' 'pick a theme' }
+    if (-not $Legend) { $Legend = L '* khas Glowsh   ~ musiman   + buatanmu' '* Glowsh signature   ~ seasonal   + your own' }
+    $ids = @($Themes.Keys)
+    if ($ids.Count -eq 0) { return $null }
     $idx = [Math]::Max(0, [Array]::IndexOf($ids, $CurrentId))
     $interactive = $true
     try { if ([Console]::IsInputRedirected -or $Host.Name -ne 'ConsoleHost') { $interactive = $false } } catch { $interactive = $false }
@@ -1457,10 +1502,12 @@ function Show-ThemePicker([string]$CurrentId = 'senja') {
     if (-not $interactive) {
         # Cadangan untuk host yang tidak mendukung tombol panah: menu bernomor
         for ($i = 0; $i -lt $ids.Count; $i++) {
-            $t = $GlowshThemes[$ids[$i]]
+            $t = $Themes[$ids[$i]]
             Write-Host ("    [{0}] {1} - {2}" -f ($i + 1), $t.Title, (Get-ThemeDesc $t))
         }
-        return Resolve-GlowshThemeId (Read-Host ('    ' + (L 'Nomor tema' 'Theme number')))
+        $n = 0
+        if ([int]::TryParse((Read-Host ('    ' + (L 'Nomor tema' 'Theme number'))), [ref]$n) -and $n -ge 1 -and $n -le $ids.Count) { return $ids[$n - 1] }
+        return $null
     }
 
     Enable-VirtualTerminal
@@ -1471,11 +1518,11 @@ function Show-ThemePicker([string]$CurrentId = 'senja') {
             $sb = New-Object System.Text.StringBuilder
             [void]$sb.Append("$e[H$e[2J")
             [void]$sb.AppendLine('')
-            [void]$sb.AppendLine("  $e[1;35mGlowsh$e[0m - " + (L 'pilih tema' 'pick a theme'))
+            [void]$sb.AppendLine("  $e[1;35mGlowsh$e[0m - " + $Heading)
             [void]$sb.AppendLine("  $e[90m" + (L '[atas/bawah] pilih   [Enter] pakai   [Esc] batal' '[up/down] move   [Enter] apply   [Esc] cancel') + "$e[0m")
             [void]$sb.AppendLine('')
             for ($i = 0; $i -lt $ids.Count; $i++) {
-                $t = $GlowshThemes[$ids[$i]]
+                $t = $Themes[$ids[$i]]
                 $now = if ($ids[$i] -eq $CurrentId) { '  (' + (L 'aktif' 'active') + ')' } else { '' }
                 $name = ('{0} {1}' -f (Get-ThemeTag $t), $t.Title).PadRight(20)
                 if ($i -eq $idx) {
@@ -1486,9 +1533,9 @@ function Show-ThemePicker([string]$CurrentId = 'senja') {
                 }
             }
             [void]$sb.AppendLine('')
-            [void]$sb.AppendLine("  $e[90m" + (L '* khas Glowsh   ~ musiman   + buatanmu' '* Glowsh signature   ~ seasonal   + your own') + "$e[0m")
+            [void]$sb.AppendLine("  $e[90m" + $Legend + "$e[0m")
             [void]$sb.AppendLine('')
-            foreach ($l in (Get-ThemePreview $GlowshThemes[$ids[$idx]])) { [void]$sb.AppendLine($l) }
+            foreach ($l in (Get-ThemePreview $Themes[$ids[$idx]])) { [void]$sb.AppendLine($l) }
             [Console]::Write($sb.ToString())
 
             $k = [Console]::ReadKey($true)
@@ -1771,6 +1818,429 @@ function Invoke-GlowshDoctor {
     Write-Host ''
 }
 
+# ============================================================ glowsh wrapped (rekap tahunan)
+function Get-GlowshPSReadLineHistoryPath {
+    try { $p = (Get-PSReadLineOption -ErrorAction Stop).HistorySavePath; if ($p) { return $p } } catch {}
+    return Join-Path $env:APPDATA 'Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt'
+}
+
+function Get-GlowshPersona([int]$Hour) {
+    if ($Hour -lt 5)  { return @('Kalong Begadang', 'Night Owl') }
+    if ($Hour -lt 11) { return @('Si Paling Pagi', 'Early Bird') }
+    if ($Hour -lt 15) { return @('Anak Siang', 'Midday Hacker') }
+    if ($Hour -lt 19) { return @('Pejuang Sore', 'Golden Hour Coder') }
+    return @('Anak Malam', 'Night Coder')
+}
+
+function Get-GlowshWrappedData([int]$Year) {
+    $cmds = New-Object System.Collections.Generic.List[object]
+    $typos = New-Object System.Collections.Generic.List[string]
+    $linux = 0
+    $file = Join-Path $GlowHome 'stats.log'
+    if (Test-Path $file) {
+        $inv = [Globalization.CultureInfo]::InvariantCulture
+        foreach ($l in [IO.File]::ReadLines($file)) {
+            $p = $l.Split("`t")
+            if ($p.Count -lt 4) { continue }
+            $ts = [datetime]::MinValue
+            if (-not [datetime]::TryParseExact($p[0], 'yyyy-MM-ddTHH:mm:ss', $inv, [Globalization.DateTimeStyles]::None, [ref]$ts)) { continue }
+            if ($ts.Year -ne $Year) { continue }
+            if ($p[3].StartsWith('__typo:')) { $typos.Add($p[3].Substring(7)); continue }
+            if ($p[3].StartsWith('__linux:')) { $linux++; continue }
+            $ms = 0L; [void][long]::TryParse($p[2], [ref]$ms)
+            $cmds.Add([pscustomobject]@{ T = $ts; Ok = ($p[1] -eq '1'); Ms = $ms; Head = $p[3] })
+        }
+    }
+    $d = [ordered]@{ Year = $Year; Source = 'glowsh'; Total = $cmds.Count; Timed = $false }
+
+    # Data Glowsh masih sedikit -> pakai riwayat PowerShell (tanpa waktu) untuk perintah favorit
+    $heads = @($cmds | ForEach-Object { $_.Head })
+    if ($cmds.Count -lt 30) {
+        $hist = Get-GlowshPSReadLineHistoryPath
+        if (Test-Path $hist) {
+            $fromHist = @([IO.File]::ReadAllLines($hist) | ForEach-Object { Get-GlowshCommandHead $_ } | Where-Object { $_ })
+            if ($fromHist.Count -gt $cmds.Count) { $heads = $fromHist; $d.Source = 'history'; $d.Total = $fromHist.Count }
+        }
+    }
+    $firstWords = @($heads | ForEach-Object { ($_ -split ' ')[0] })
+    $d.Unique = @($firstWords | Sort-Object -Unique).Count
+    $d.Top = @($firstWords | Group-Object | Sort-Object Count -Descending | Select-Object -First 5 |
+        ForEach-Object { [pscustomobject]@{ Name = $_.Name; Count = $_.Count } })
+    $sub = $heads | Where-Object { $_ -match ' ' } | Group-Object | Sort-Object Count -Descending | Select-Object -First 1
+    $d.TopSub = if ($sub) { [pscustomobject]@{ Name = $sub.Name; Count = $sub.Count } } else { $null }
+
+    if ($d.Source -eq 'glowsh' -and $cmds.Count -gt 0) {
+        $d.Timed = $true
+        $d.Since = ($cmds | Sort-Object T | Select-Object -First 1).T
+        $days = @($cmds | ForEach-Object { $_.T.Date } | Sort-Object -Unique)
+        $d.ActiveDays = $days.Count
+        $best = 1; $run = 1
+        for ($i = 1; $i -lt $days.Count; $i++) {
+            if (($days[$i] - $days[$i - 1]).TotalDays -eq 1) { $run++; if ($run -gt $best) { $best = $run } } else { $run = 1 }
+        }
+        $d.Streak = $best
+        $d.Hour = [int](($cmds | Group-Object { $_.T.Hour } | Sort-Object Count -Descending | Select-Object -First 1).Name)
+        $d.Weekday = [int](($cmds | Group-Object { [int]$_.T.DayOfWeek } | Sort-Object Count -Descending | Select-Object -First 1).Name)
+        $d.Longest = $cmds | Sort-Object Ms -Descending | Select-Object -First 1
+        $d.OkRate = [int][Math]::Round(100.0 * @($cmds | Where-Object { $_.Ok }).Count / $cmds.Count)
+        $d.Persona = Get-GlowshPersona $d.Hour
+    } else {
+        $top1 = if ($d.Top.Count) { $d.Top[0].Name } else { '' }
+        $d.Persona = switch -Regex ($top1) {
+            '^git$'                          { @('Raja Commit', 'Commit Royalty') }
+            '^(npm|npx|node|pnpm|yarn|bun)$' { @('Anak JavaScript', 'JS Wizard') }
+            '^(python|py|pip)$'              { @('Pawang Python', 'Python Tamer') }
+            '^(cd|ls|dir|gci)$'              { @('Penjelajah Folder', 'Folder Explorer') }
+            default                          { @('Penjelajah Terminal', 'Terminal Explorer') }
+        }
+    }
+    $d.TypoSaves = $typos.Count + $linux
+    $tp = $typos | Group-Object | Sort-Object Count -Descending | Select-Object -First 1
+    $d.TopTypo = if ($tp) { $tp.Name -replace '>', ' -> ' } else { $null }
+    return $d
+}
+
+function Show-GlowshWrapped($D, $Theme) {
+    Enable-VirtualTerminal
+    $e = [char]27
+    $a = Get-ThemeAccents $Theme
+    $fg = $Theme.Scheme.foreground
+    $c = { param($hex) "$e[38;2;$(Get-Rgb $hex)m" }
+    $r = "$e[0m"
+    $block = [string][char]0x2588
+    $culture = [Globalization.CultureInfo]::GetCultureInfo($(if ($GlowshLang -eq 'en') { 'en-US' } else { 'id-ID' }))
+    $num = { param($n) ([int]$n).ToString('N0', $culture) }
+    $out = New-Object System.Collections.Generic.List[string]
+    $out.Add('')
+    $out.Add("  $(& $c $a.a2)G L O W S H   W R A P P E D$r")
+    $out.Add("  $e[1m$(& $c $a.a1)$($D.Year)$r")
+    $out.Add('')
+    $label = if ($D.Source -eq 'history') { L 'perintah di riwayat PowerShell kamu' 'commands in your PowerShell history' } else { L "perintah kamu jalankan tahun ini" "commands you ran this year" }
+    $out.Add("  $e[1m$(& $c $fg)$(& $num $D.Total)$r $(& $c $a.muted)$label$r")
+    $out.Add('')
+    if ($D.Top.Count) {
+        $out.Add("  $(& $c $a.a2)$(L 'Perintah favorit' 'Top commands')$r")
+        $max = [double]$D.Top[0].Count
+        $cols = @($a.a1, $a.a2, $a.a3, $a.a4, $a.ok)
+        for ($i = 0; $i -lt $D.Top.Count; $i++) {
+            $t = $D.Top[$i]
+            $w = [Math]::Max(1, [int][Math]::Round(24 * $t.Count / $max))
+            $out.Add(("  {0}. {1,-12} " -f ($i + 1), $t.Name) + "$(& $c $cols[$i])$($block * $w)$r $(& $c $a.muted)$(& $num $t.Count)x$r")
+        }
+        $out.Add('')
+    }
+    if ($D.TopSub) { $out.Add("  $(L 'Subperintah andalan' 'Go-to subcommand'): $(& $c $a.a1)$($D.TopSub.Name)$r $(& $c $a.muted)($(& $num $D.TopSub.Count)x)$r") }
+    if ($D.Timed) {
+        $day = $culture.DateTimeFormat.GetDayName([DayOfWeek]$D.Weekday)
+        $out.Add("  $(L 'Streak terpanjang' 'Longest streak'): $(& $c $a.a1)$($D.Streak) $(L 'hari' 'days')$r   $(& $c $a.muted)($($D.ActiveDays) $(L 'hari aktif' 'active days'))$r")
+        $out.Add("  $(L 'Jam paling produktif' 'Most productive hour'): $(& $c $a.a1)$('{0:D2}:00' -f $D.Hour)$r   $(& $c $a.muted)$(L 'hari favorit' 'favorite day'): $day$r")
+        $out.Add("  $(L 'Perintah paling lama' 'Longest command'): $(& $c $a.a1)$($D.Longest.Head)$r $(& $c $a.muted)($(Format-GlowshDuration ([TimeSpan]::FromMilliseconds($D.Longest.Ms))))$r")
+        $out.Add("  $(L 'Tingkat sukses' 'Success rate'): $(& $c $a.ok)$($D.OkRate)%$r")
+    }
+    $out.Add("  $(L 'Salah ketik diselamatkan Glowsh' 'Typos rescued by Glowsh'): $(& $c $a.a1)$($D.TypoSaves)x$r" + $(if ($D.TopTypo) { "   $(& $c $a.muted)$(L 'favorit' 'favorite'): $($D.TopTypo)$r" } else { '' }))
+    $out.Add('')
+    $out.Add("  $(L 'Kamu adalah' 'You are'): $e[1m$(& $c $a.a2)$(L $D.Persona[0] $D.Persona[1])$r")
+    $out.Add('')
+    if (-not $D.Timed) {
+        $out.Add("  $(& $c $a.muted)$(L 'Statistik waktu (streak, jam favorit) mulai dicatat sekarang. Cek lagi akhir tahun!' 'Time stats (streak, favorite hour) start recording now. Check back at year end!')$r")
+        $out.Add('')
+    }
+    foreach ($l in $out) { [Console]::WriteLine($l) }
+}
+
+function Save-GlowshWrappedImage($D, $Theme, [string]$Path) {
+    Add-Type -AssemblyName System.Drawing
+    $a = Get-ThemeAccents $Theme
+    $col = { param($hex, $alpha = 255) [System.Drawing.Color]::FromArgb($alpha, [System.Drawing.ColorTranslator]::FromHtml($hex)) }
+    $culture = [Globalization.CultureInfo]::GetCultureInfo($(if ($GlowshLang -eq 'en') { 'en-US' } else { 'id-ID' }))
+    $W = 1080; $H = 1920
+    $bmp = New-Object System.Drawing.Bitmap $W, $H
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+    $g.Clear((& $col $Theme.Scheme.background))
+    # cahaya lembut di latar
+    foreach ($blob in @(@(-200, 80, 900, $a.a1), @(480, 1100, 900, $a.a2))) {
+        # (nama variabel sengaja bukan $path: PowerShell tidak case-sensitive, jadi akan bentrok dengan parameter $Path)
+        $gp = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $gp.AddEllipse([single]$blob[0], [single]$blob[1], [single]$blob[2], [single]$blob[2])
+        $pg = New-Object System.Drawing.Drawing2D.PathGradientBrush $gp
+        $pg.CenterColor = & $col $blob[3] 90
+        $pg.SurroundColors = [System.Drawing.Color[]]@((& $col $blob[3] 0))
+        $g.FillPath($pg, $gp); $pg.Dispose(); $gp.Dispose()
+    }
+    $font = { param($size, $family = 'Segoe UI', $style = 'Bold') New-Object System.Drawing.Font($family, [single]$size, [System.Drawing.FontStyle]$style, [System.Drawing.GraphicsUnit]::Pixel) }
+    $text = { param($s, $f, $hex, $x, $y, $alpha = 255) $b = New-Object System.Drawing.SolidBrush((& $col $hex $alpha)); $g.DrawString([string]$s, $f, $b, [single]$x, [single]$y); $b.Dispose() }
+    $rounded = { param($x, $y, $w, $h, $rad)
+        $p = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $p.AddArc([single]$x, [single]$y, [single]($rad * 2), [single]($rad * 2), 180, 90)
+        $p.AddArc([single]($x + $w - $rad * 2), [single]$y, [single]($rad * 2), [single]($rad * 2), 270, 90)
+        $p.AddArc([single]($x + $w - $rad * 2), [single]($y + $h - $rad * 2), [single]($rad * 2), [single]($rad * 2), 0, 90)
+        $p.AddArc([single]$x, [single]($y + $h - $rad * 2), [single]($rad * 2), [single]($rad * 2), 90, 90)
+        $p.CloseFigure(); return $p }
+    $fg = $Theme.Scheme.foreground
+
+    & $text 'G L O W S H   W R A P P E D' (& $font 40 'Segoe UI' 'Bold') $a.a2 110 130
+    & $text $D.Year (& $font 230 'Segoe UI Black' 'Regular') $a.a1 90 170
+    & $text (([int]$D.Total).ToString('N0', $culture)) (& $font 150 'Segoe UI Black' 'Regular') $fg 100 470
+    $label = if ($D.Source -eq 'history') { L 'perintah di riwayat PowerShell kamu' 'commands in your PowerShell history' } else { L 'perintah kamu jalankan tahun ini' 'commands you ran this year' }
+    & $text $label (& $font 42 'Segoe UI' 'Regular') $fg 110 660 190
+
+    & $text (L 'Perintah favorit' 'Top commands') (& $font 44 'Segoe UI' 'Bold') $a.a2 110 790
+    $cols = @($a.a1, $a.a2, $a.a3, $a.a4, $a.ok)
+    $max = if ($D.Top.Count) { [double]$D.Top[0].Count } else { 1 }
+    $right = New-Object System.Drawing.StringFormat; $right.Alignment = [System.Drawing.StringAlignment]::Far
+    for ($i = 0; $i -lt $D.Top.Count; $i++) {
+        $y = 870 + $i * 96
+        & $text ("{0}  {1}" -f ($i + 1), $D.Top[$i].Name) (& $font 44 'Consolas' 'Bold') $fg 110 $y
+        $cb = New-Object System.Drawing.SolidBrush((& $col $fg 160))
+        $g.DrawString((([int]$D.Top[$i].Count).ToString('N0', $culture) + 'x'), (& $font 40 'Segoe UI' 'Regular'), $cb, [single]970, [single]($y + 2), $right); $cb.Dispose()
+        $bw = [Math]::Max(24, 860 * $D.Top[$i].Count / $max)
+        $bp = & $rounded 110 ($y + 60) $bw 16 8
+        $bb = New-Object System.Drawing.SolidBrush((& $col $cols[$i])); $g.FillPath($bb, $bp); $bb.Dispose(); $bp.Dispose()
+    }
+
+    $tiles = if ($D.Timed) {
+        @(@((L 'Streak terpanjang' 'Longest streak'), "$($D.Streak) $(L 'hari' 'days')"),
+          @((L 'Jam paling produktif' 'Peak hour'), ('{0:D2}:00' -f $D.Hour)),
+          @((L 'Salah ketik diselamatkan' 'Typos rescued'), "$($D.TypoSaves)x"),
+          @((L 'Tingkat sukses' 'Success rate'), "$($D.OkRate)%"))
+    } else {
+        @(@((L 'Perintah berbeda' 'Unique commands'), "$($D.Unique)"),
+          @((L 'Subperintah andalan' 'Go-to subcommand'), $(if ($D.TopSub) { $D.TopSub.Name } else { '-' })),
+          @((L 'Salah ketik diselamatkan' 'Typos rescued'), "$($D.TypoSaves)x"),
+          @((L 'Tema' 'Theme'), $Theme.Title))
+    }
+    for ($i = 0; $i -lt 4; $i++) {
+        $x = 110 + ($i % 2) * 440; $y = 1450 + [Math]::Floor($i / 2) * 195
+        $tp = & $rounded $x $y 420 180 28
+        $tb = New-Object System.Drawing.SolidBrush((& $col $fg 22)); $g.FillPath($tb, $tp); $tb.Dispose(); $tp.Dispose()
+        & $text $tiles[$i][0] (& $font 30 'Segoe UI' 'Regular') $fg ($x + 30) ($y + 26) 190
+        $vb = New-Object System.Drawing.SolidBrush((& $col $cols[$i]))
+        $g.DrawString([string]$tiles[$i][1], (& $font 54 'Segoe UI' 'Bold'), $vb, (New-Object System.Drawing.RectangleF([single]($x + 30), [single]($y + 70), [single]370, [single]100))); $vb.Dispose()
+    }
+
+    $center = New-Object System.Drawing.StringFormat; $center.Alignment = [System.Drawing.StringAlignment]::Center
+    $pb = New-Object System.Drawing.SolidBrush((& $col $a.a2))
+    $g.DrawString(((L 'Kamu adalah ' 'You are ') + (L $D.Persona[0] $D.Persona[1])), (& $font 52 'Segoe UI' 'Bold'), $pb, (New-Object System.Drawing.RectangleF([single]0, [single]1352, [single]$W, [single]70)), $center); $pb.Dispose()
+    $fb = New-Object System.Drawing.SolidBrush((& $col $fg 150))
+    $g.DrawString('glowsh  |  github.com/SQverse/glowsh', (& $font 30 'Segoe UI' 'Regular'), $fb, (New-Object System.Drawing.RectangleF([single]0, [single]1846, [single]$W, [single]50)), $center); $fb.Dispose()
+
+    $bmp.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
+    $g.Dispose(); $bmp.Dispose()
+}
+
+# ============================================================ glowsh why (penjelasan error)
+# P = pola error, X = pola untuk mengambil detail ({x}), T/E = judul & penjelasan, F = langkah perbaikan
+$GlowshWhyRules = @(
+    @{ P = 'Python was not found; run without arguments to install'
+       T = @('Python belum terpasang', 'Python is not installed')
+       E = @('Yang terpanggil adalah pintasan Microsoft Store, bukan Python sungguhan.', 'Windows ran the Microsoft Store shortcut, not a real Python.')
+       F = @(@('Install Python: winget install Python.Python.3.12', 'Install Python: winget install Python.Python.3.12'),
+             @('Lalu matikan pintasan Store: Settings > Apps > App execution aliases > python.exe', 'Then turn off the Store alias: Settings > Apps > App execution aliases > python.exe')) }
+    @{ P = 'running scripts is disabled|cannot be loaded because running scripts|PSSecurityException'
+       T = @('Script PowerShell diblokir', 'PowerShell scripts are blocked')
+       E = @('Execution Policy di komputer ini melarang file .ps1 dijalankan.', 'This computer''s Execution Policy blocks .ps1 files.')
+       F = @(@('Set-ExecutionPolicy -Scope CurrentUser RemoteSigned', 'Set-ExecutionPolicy -Scope CurrentUser RemoteSigned')) }
+    @{ P = "is not recognized as (the name of a cmdlet|an internal or external command)|CommandNotFoundException"; X = "'([^']+)' is not recognized"
+       T = @('Perintah tidak ditemukan', 'Command not found')
+       E = @("Perintah '{x}' tidak dikenal: salah ketik, belum terpasang, atau belum masuk PATH.", "'{x}' is unknown: a typo, not installed, or not on PATH.")
+       F = @(@('Cek ejaannya (Glowsh juga memberi saran saat salah ketik)', 'Check the spelling (Glowsh suggests fixes for typos)'),
+             @('Cari & install: winget search {x}', 'Find & install it: winget search {x}'),
+             @('Baru saja install? Buka tab terminal baru supaya PATH diperbarui', 'Just installed it? Open a new terminal tab so PATH refreshes')) }
+    @{ P = 'EADDRINUSE|address already in use|Only one usage of each socket address|port \d+ is (already )?in use'; X = '(?::|port\s+)(\d{2,5})'
+       T = @('Port sedang dipakai', 'Port already in use')
+       E = @('Port {x} sudah dipakai program lain, biasanya server yang masih jalan di tab lain.', 'Port {x} is taken by another program, usually a server still running in another tab.')
+       F = @(@('Cari pemakainya: Get-NetTCPConnection -LocalPort {x} | Select-Object OwningProcess', 'Find it: Get-NetTCPConnection -LocalPort {x} | Select-Object OwningProcess'),
+             @('Hentikan: Stop-Process -Id <OwningProcess>', 'Stop it: Stop-Process -Id <OwningProcess>'),
+             @('Atau jalankan di port lain', 'Or run on a different port')) }
+    @{ P = 'being used by another process|EBUSY|resource busy'
+       T = @('File sedang dipakai', 'File is in use')
+       E = @('Ada program lain yang sedang membuka file/folder ini.', 'Another program has this file or folder open.')
+       F = @(@('Tutup program yang memakainya (editor, explorer, server), lalu coba lagi', 'Close whatever is using it (editor, Explorer, a server), then retry')) }
+    @{ P = 'Access (to the path .+ )?is denied|Permission denied(?! \(publickey)|UnauthorizedAccessException|EPERM|EACCES'
+       T = @('Akses ditolak', 'Access denied')
+       E = @('Kamu tidak punya izin untuk file/folder ini, atau butuh hak admin.', 'You lack permission for this file/folder, or it needs admin rights.')
+       F = @(@('Pastikan kamu bekerja di folder milikmu (misalnya di Documents)', 'Make sure you work in your own folders (e.g. Documents)'),
+             @('Kalau memang butuh admin: klik kanan Windows Terminal > Run as administrator', 'If it really needs admin: right-click Windows Terminal > Run as administrator')) }
+    @{ P = 'Cannot find path|ENOENT|No such file or directory|cannot find the (path|file) specified|PathNotFound|ItemNotFoundException'; X = "Cannot find path '([^']+)'|ENOENT[^']*'([^']+)'"
+       T = @('File atau folder tidak ditemukan', 'File or folder not found')
+       E = @('Lokasi yang dituju tidak ada. Mungkin salah ketik atau kamu sedang di folder lain. {x}', 'That location does not exist. Maybe a typo, or you are in another folder. {x}')
+       F = @(@('Cek posisi sekarang: pwd   lalu lihat isinya: ls', 'Check where you are: pwd   then list it: ls'),
+             @('Tekan Tab saat mengetik nama file supaya dilengkapi otomatis', 'Press Tab while typing a name to autocomplete it')) }
+    @{ P = "Cannot find module|MODULE_NOT_FOUND"; X = "Cannot find module '([^']+)'"
+       T = @('Modul Node.js tidak ditemukan', 'Node.js module not found')
+       E = @('Library {x} belum terpasang di proyek ini.', 'The library {x} is not installed in this project.')
+       F = @(@('Install semua dependensi: npm install', 'Install all dependencies: npm install'),
+             @('Atau install satu: npm install {x}', 'Or just that one: npm install {x}')) }
+    @{ P = 'ModuleNotFoundError|No module named'; X = "No module named '?([\w.]+)'?"
+       T = @('Modul Python tidak ditemukan', 'Python module not found')
+       E = @('Library {x} belum terpasang untuk Python yang kamu pakai.', 'The library {x} is not installed for the Python you are using.')
+       F = @(@('python -m pip install {x}', 'python -m pip install {x}'),
+             @('Pakai virtual env? Aktifkan dulu: .\.venv\Scripts\Activate.ps1', 'Using a virtual env? Activate it first: .\.venv\Scripts\Activate.ps1')) }
+    @{ P = 'ERESOLVE|unable to resolve dependency tree|peer dep'
+       T = @('Versi dependensi npm bentrok', 'npm dependency conflict')
+       E = @('Dua library butuh versi yang tidak cocok satu sama lain.', 'Two libraries require versions that do not fit together.')
+       F = @(@('npm install --legacy-peer-deps', 'npm install --legacy-peer-deps')) }
+    @{ P = 'not a git repository'
+       T = @('Bukan folder git', 'Not a git repository')
+       E = @('Folder ini belum dilacak git.', 'This folder is not tracked by git.')
+       F = @(@('Pindah ke folder proyek: cd <folder-proyek>', 'Move to your project: cd <project-folder>'),
+             @('Atau mulai git di sini: git init', 'Or start git here: git init')) }
+    @{ P = 'Please tell me who you are|empty ident name|unable to auto-detect email'
+       T = @('Identitas git belum diatur', 'Git identity not set')
+       E = @('Git perlu nama & email untuk mencatat commit.', 'Git needs a name and email to record commits.')
+       F = @(@('git config --global user.name "Nama Kamu"', 'git config --global user.name "Your Name"'),
+             @('git config --global user.email "email@kamu.com"', 'git config --global user.email "you@example.com"')) }
+    @{ P = 'would be overwritten by (merge|checkout)|Please commit your changes or stash them'
+       T = @('Perubahan lokal akan tertimpa', 'Local changes would be overwritten')
+       E = @('Ada perubahan yang belum di-commit, dan git tidak mau menimpanya.', 'You have uncommitted changes git refuses to overwrite.')
+       F = @(@('Simpan sementara: git stash', 'Stash them: git stash'),
+             @('Lanjutkan perintahmu, lalu kembalikan: git stash pop', 'Run your command, then restore: git stash pop')) }
+    @{ P = 'CONFLICT \(|Automatic merge failed|Merge conflict'
+       T = @('Merge conflict', 'Merge conflict')
+       E = @('Dua versi mengubah baris yang sama, git butuh kamu memilih.', 'Two versions changed the same lines and git needs you to choose.')
+       F = @(@('Buka file yang konflik, cari tanda <<<<<<< dan >>>>>>>, pilih isi yang benar', 'Open the conflicted files, find <<<<<<< and >>>>>>>, keep the right content'),
+             @('Lalu: git add .   dan   git commit', 'Then: git add .   and   git commit')) }
+    @{ P = '\[rejected\]|failed to push some refs|non-fast-forward|fetch first'
+       T = @('Push ditolak', 'Push rejected')
+       E = @('Di remote ada commit baru yang belum ada di laptop kamu.', 'The remote has new commits you do not have yet.')
+       F = @(@('git pull --rebase', 'git pull --rebase'), @('Lalu: git push', 'Then: git push')) }
+    @{ P = 'Authentication failed|Permission denied \(publickey\)|could not read Username|Invalid username or password|returned error: 403'
+       T = @('Login git gagal', 'Git authentication failed')
+       E = @('GitHub tidak menerima login kamu (password biasa sudah tidak bisa dipakai).', 'GitHub rejected your login (plain passwords no longer work).')
+       F = @(@('Paling mudah pakai GitHub CLI: gh auth login', 'Easiest with GitHub CLI: gh auth login'),
+             @('Atau pakai Personal Access Token sebagai password', 'Or use a Personal Access Token as the password')) }
+    @{ P = 'ECONNREFUSED|Connection refused|actively refused'
+       T = @('Koneksi ditolak', 'Connection refused')
+       E = @('Tidak ada server yang mendengarkan di alamat/port itu.', 'Nothing is listening at that address/port.')
+       F = @(@('Pastikan server/database sudah dijalankan', 'Make sure the server/database is running'),
+             @('Cek alamat & port-nya sudah benar', 'Double-check the address and port')) }
+    @{ P = 'ENOTFOUND|getaddrinfo|Could not resolve host|ETIMEDOUT|timed out|unable to connect|No such host'
+       T = @('Masalah jaringan', 'Network problem')
+       E = @('Server tidak bisa dihubungi: internet putus, DNS bermasalah, atau terhalang proxy/VPN.', 'The server is unreachable: no internet, DNS trouble, or a proxy/VPN in the way.')
+       F = @(@('Cek internet: Test-Connection github.com -Count 2', 'Check the internet: Test-Connection github.com -Count 2'),
+             @('Pakai WiFi kampus/kantor? Mungkin ada proxy', 'On campus/office WiFi? There may be a proxy')) }
+    @{ P = 'certificate|SSL|self.signed'
+       T = @('Masalah sertifikat SSL', 'SSL certificate problem')
+       E = @('Koneksi aman gagal diverifikasi.', 'The secure connection could not be verified.')
+       F = @(@('Cek tanggal & jam di laptop sudah benar', 'Check your date and time are correct'),
+             @('Jaringan kampus/kantor sering memakai proxy: coba jaringan lain', 'Campus/office networks often use a proxy: try another network')) }
+    @{ P = 'heap out of memory|JavaScript heap'
+       T = @('Node.js kehabisan memori', 'Node.js ran out of memory')
+       E = @('Proses butuh RAM lebih banyak dari batas bawaan Node.js.', 'The process needs more RAM than Node''s default limit.')
+       F = @(@('$env:NODE_OPTIONS = "--max-old-space-size=4096"   lalu jalankan lagi', '$env:NODE_OPTIONS = "--max-old-space-size=4096"   then run it again')) }
+    @{ P = 'ENOSPC|no space left|not enough space|disk is full'
+       T = @('Disk penuh', 'Disk is full')
+       E = @('Ruang penyimpanan habis.', 'You ran out of storage space.')
+       F = @(@('Kosongkan ruang: hapus node_modules lama, Recycle Bin, atau jalankan Disk Cleanup', 'Free some space: old node_modules, Recycle Bin, or Disk Cleanup')) }
+    @{ P = 'SyntaxError|Unexpected token|ParseException|IndentationError|ParserError'
+       T = @('Kesalahan penulisan kode (syntax)', 'Syntax error')
+       E = @('Ada kode yang penulisannya tidak valid.', 'Some code is not written validly.')
+       F = @(@('Lihat nomor baris di pesan error', 'Look at the line number in the message'),
+             @('Cek tanda kurung, kutip, koma, atau indentasi yang kurang/lebih', 'Check for missing or extra brackets, quotes, commas or indentation')) }
+)
+
+function Find-GlowshWhyRule([string]$Text) {
+    foreach ($r in $GlowshWhyRules) { if ($Text -match "(?i)$($r.P)") { return $r } }
+    return $null
+}
+
+function Show-GlowshWhy([string[]]$Words) {
+    $text = $null; $cmdLine = $null; $source = ''
+    if ($Words -and $Words.Count) { $text = $Words -join ' '; $source = 'arg' }
+    $fail = $global:GlowshLastFailure
+    if (-not $text -and $fail) {
+        $cmdLine = $fail.Line
+        if ($fail.Error) { $text = [string]$fail.Error.Exception.Message + "`n" + [string]$fail.Error.FullyQualifiedErrorId; $source = 'last' }
+    }
+    if (-not $text) {
+        try {
+            $clip = [string](Get-Clipboard -Raw)
+            if ($clip -and $clip.Length -lt 20000 -and (Find-GlowshWhyRule $clip)) { $text = $clip; $source = 'clipboard' }
+        } catch {}
+    }
+    Write-Host ''
+    if (-not $text) {
+        if ($fail) {
+            Write-Host ('  ' + (L "Perintah '$($fail.Line)' gagal (exit code $($fail.ExitCode)), tapi pesan error-nya tidak tertangkap." "'$($fail.Line)' failed (exit code $($fail.ExitCode)), but its error message was not captured.")) -ForegroundColor Yellow
+        } else {
+            Write-Host ('  ' + (L 'Belum ada error yang bisa dijelaskan.' 'No error to explain yet.')) -ForegroundColor Yellow
+        }
+        Write-Host ('  ' + (L 'Seleksi pesan error di layar, tekan Ctrl+C, lalu jalankan: glowsh why' 'Select the error message on screen, press Ctrl+C, then run: glowsh why')) -ForegroundColor DarkGray
+        Write-Host ('  ' + (L 'Atau tempel langsung: glowsh why "isi pesan error"' 'Or paste it directly: glowsh why "the error message"')) -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+    $rule = Find-GlowshWhyRule $text
+    if ($cmdLine) { Write-Host ('  ' + (L 'Perintah: ' 'Command: ') + $cmdLine) -ForegroundColor DarkGray }
+    if ($source -eq 'clipboard') { Write-Host ('  ' + (L '(membaca pesan error dari clipboard)' '(reading the error from your clipboard)')) -ForegroundColor DarkGray }
+    if (-not $rule) {
+        $first = (($text -split "`r?`n") | Where-Object { $_.Trim() } | Select-Object -First 1)
+        Write-Host ('  ' + (L 'Glowsh belum kenal error ini:' 'Glowsh does not know this error yet:')) -ForegroundColor Yellow
+        Write-Host "    $first"
+        Write-Host ''
+        Write-Host ('  ' + (L 'Coba cari kalimat pertamanya di Google / Stack Overflow, atau kirim ke kami:' 'Try searching its first line on Google / Stack Overflow, or send it to us:')) -ForegroundColor DarkGray
+        Write-Host "    https://github.com/SQverse/glowsh/issues" -ForegroundColor DarkGray
+        Write-Host ''
+        return
+    }
+    $x = ''
+    if ($rule.X -and $text -match "(?i)$($rule.X)") { $x = @($Matches[1], $Matches[2]) | Where-Object { $_ } | Select-Object -First 1 }
+    $fill = { param($s) $s.Replace('{x}', [string]$x).Trim() }
+    Write-Host ('  ' + (L $rule.T[0] $rule.T[1])) -ForegroundColor Magenta
+    Write-Host ('  ' + (& $fill (L $rule.E[0] $rule.E[1])))
+    Write-Host ''
+    Write-Host ('  ' + (L 'Coba ini:' 'Try this:')) -ForegroundColor White
+    $i = 1
+    foreach ($f in $rule.F) { Write-Host ("    $i. " + (& $fill (L $f[0] $f[1]))) -ForegroundColor Cyan; $i++ }
+    Write-Host ''
+}
+
+# ============================================================ galeri tema komunitas
+$GlowshRepoWeb = 'https://github.com/SQverse/glowsh'
+
+function Get-GlowshCommunityThemes {
+    $data = Invoke-RestMethod -UseBasicParsing -Uri "$GlowshRepoRaw/themes/community.json?t=$([DateTime]::UtcNow.Ticks)"
+    $list = [ordered]@{}
+    foreach ($e in @($data.themes)) {
+        try { $t = ConvertFrom-GlowshShareCode ([string]$e.code) } catch { continue }
+        $name = [string]$e.name
+        $t.Title = $name
+        $t.Scheme.name = "Glowsh $name"
+        $t.Desc = @("$([string]$e.desc_id)  - oleh $([string]$e.author)", "$([string]$e.desc_en)  - by $([string]$e.author)")
+        $slug = ($name.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
+        if ($slug -and -not $list.Contains($slug)) { $list[$slug] = $t }
+    }
+    return $list
+}
+
+function Install-GlowshCustomTheme($Theme) {
+    $slug = ($Theme.Title.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
+    if (-not $slug) { $slug = 'shared' }
+    $id = $slug; $n = 2
+    while ($GlowshThemes.Contains($id) -and -not $GlowshThemes[$id].Custom) { $id = "$slug-$n"; $n++ }
+    $Theme.Custom = $true
+    Save-GlowshCustomTheme $id $Theme
+    $GlowshThemes[$id] = $Theme
+    [void](Set-GlowshTheme $id -Explicit)
+    return $id
+}
+
+function Submit-GlowshTheme([string]$Id) {
+    $t = $GlowshThemes[$Id]
+    $code = ConvertTo-GlowshShareCode $t
+    $title = "Tema komunitas: $($t.Title)"
+    $body = "**Nama tema / theme name:** $($t.Title)`n`n**Kode / code:**`n`n``````n$code`n```````n`n**Deskripsi / description:** (ceritakan nuansa temamu / describe its vibe)`n`n_Dikirim lewat / sent with: glowsh submit_"
+    $url = "$GlowshRepoWeb/issues/new?title=$([uri]::EscapeDataString($title))&body=$([uri]::EscapeDataString($body))"
+    Write-Host ''
+    Write-Host ('  ' + (L "Mengirim tema '$($t.Title)' ke galeri komunitas Glowsh" "Submitting '$($t.Title)' to the Glowsh community gallery")) -ForegroundColor Magenta
+    Write-Host ('  ' + (L 'Halaman GitHub akan terbuka dengan kode tema yang sudah terisi.' 'A GitHub page will open with your theme code filled in.'))
+    Write-Host ('  ' + (L 'Tambahkan deskripsi singkat, lalu klik "Submit new issue". Kalau disetujui, temamu muncul di: glowsh browse' 'Add a short description, then click "Submit new issue". Once approved it shows up in: glowsh browse')) -ForegroundColor DarkGray
+    Write-Host ''
+    try { Start-Process $url } catch { Write-Host "  $url" }
+}
+
 # ============================================================ bantuan & pengaturan
 function Show-GlowshHelp {
     $t = $GlowshThemes[(Get-GlowshCurrentTheme)]
@@ -1788,6 +2258,10 @@ function Show-GlowshHelp {
         @("glowsh share [$nm]",        'bagikan tema sebagai kode',            'share a theme as a code'),
         @("glowsh import <$cd>",       'pasang tema dari kode',                'install a theme from a code'),
         @("glowsh explain <$pr>",      'jelaskan sebuah perintah',             'explain what a command does'),
+        @('glowsh why',                'jelaskan error terakhir + solusinya',  'explain the last error + how to fix it'),
+        @('glowsh wrapped [tahun]',    'rekap tahunan terminal kamu',          'your year in the terminal'),
+        @('glowsh browse',             'galeri tema komunitas',                'community theme gallery'),
+        @("glowsh submit [$nm]",       'kirim temamu ke galeri',               'share your theme with the gallery'),
         @('glowsh doctor',             'cek & perbaiki masalah tampilan',      'diagnose & fix display problems'),
         @('glowsh settings',           'lihat & ubah fitur (on/off)',          'view & toggle features'),
         @('glowsh lang id|en',         'ganti bahasa',                         'switch language'),
@@ -1910,6 +2384,43 @@ if (-not $GlowshAsLibrary -and $MyInvocation.InvocationName -ne '.') {
             }
         }
         'explain' { Show-GlowshExplain $Arguments }
+        'why' { Show-GlowshWhy $Arguments }
+        'wrapped' {
+            $yr = (Get-Date).Year; $tmp = 0
+            if ([int]::TryParse($arg1, [ref]$tmp) -and $tmp -gt 2000) { $yr = $tmp }
+            $data = Get-GlowshWrappedData $yr
+            if ($data.Total -eq 0) {
+                Write-Note (L "Belum ada data untuk $yr. Pakai terminal seperti biasa, Glowsh akan mencatatnya." "No data for $yr yet. Just use your terminal, Glowsh records it as you go.")
+                break
+            }
+            $th = $GlowshThemes[(Get-GlowshCurrentTheme)]
+            Show-GlowshWrapped $data $th
+            if (Read-YesNo (L 'Simpan sebagai gambar untuk story IG?' 'Save it as an image for your IG story?')) {
+                $png = Join-Path ([Environment]::GetFolderPath('Desktop')) "glowsh-wrapped-$yr.png"
+                try {
+                    Save-GlowshWrappedImage $data $th $png
+                    Write-Ok ((L 'Tersimpan: ' 'Saved: ') + $png)
+                    try { Start-Process $png } catch {}
+                } catch { Write-Bad ((L 'Gagal membuat gambar: ' 'Could not create the image: ') + $_.Exception.Message) }
+            }
+        }
+        'browse' {
+            Write-Step (L 'Mengambil galeri tema komunitas...' 'Fetching the community theme gallery...')
+            try { $community = Get-GlowshCommunityThemes } catch { Write-Bad ((L 'Galeri tidak bisa diambil: ' 'Could not fetch the gallery: ') + $_.Exception.Message); break }
+            if ($community.Count -eq 0) { Write-Note (L 'Galeri masih kosong.' 'The gallery is empty.'); break }
+            $pick = Show-ThemePicker '' $community (L 'galeri tema komunitas' 'community theme gallery') (L 'Punya tema keren? Kirim lewat: glowsh submit' 'Got a cool theme? Share it with: glowsh submit')
+            if (-not $pick) { Write-Note (L 'Dibatalkan, tema tidak diubah.' 'Cancelled, theme unchanged.'); break }
+            Write-Step ((L 'Memasang tema ' 'Installing theme ') + $community[$pick].Title)
+            $newId = Install-GlowshCustomTheme $community[$pick]
+            Write-Host ''
+            Write-Host ('  ' + (L "Tema '$newId' terpasang! Ada di daftar: glowsh theme list" "Theme '$newId' installed! It is now in: glowsh theme list")) -ForegroundColor Green
+            Write-Host ''
+        }
+        'submit' {
+            $id = if ($arg1) { Resolve-GlowshThemeId $arg1 } else { Get-GlowshCurrentTheme }
+            if (-not $id) { Write-Bad (L "Tema '$arg1' tidak ada." "Theme '$arg1' does not exist."); break }
+            Submit-GlowshTheme $id
+        }
         'doctor' { Invoke-GlowshDoctor }
         'sync' { Invoke-GlowshSync }
         'settings' { Show-GlowshSettings }

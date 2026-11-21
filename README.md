@@ -107,6 +107,40 @@ When a command runs for 30 seconds or more, you get a Windows notification such 
 
 Icons showing up as boxes? Font didn't change? `glowsh doctor` checks everything: fonts, Windows Terminal, your profile, Execution Policy, Clink, and even per-profile settings that silently override your theme. Most issues **can be fixed automatically** by answering `Y`.
 
+### 🎁 Glowsh Wrapped: your year in the terminal
+
+```powershell
+glowsh wrapped
+```
+
+Like Spotify Wrapped, but for your terminal: total commands, your top 5, your go-to subcommand, longest streak, most productive hour, success rate, typos Glowsh rescued, and your terminal persona (*Night Coder*, *Commit Royalty*, ...). Glowsh can also save a **1080×1920 image** for your IG story.
+
+> 🔒 Glowsh only records the **command name** (for example `git push` or `curl`), never the arguments, so tokens or passwords typed in a command are never stored. The data stays on your machine in `~\.glowsh\stats.log`. Turn it off with `glowsh stats off`.
+
+### 🩹 `glowsh why`: explain the last error
+
+```
+❯ npm start
+  Error: listen EADDRINUSE: address already in use :::3000
+❯ glowsh why
+  Port already in use
+  Port 3000 is taken by another program, usually a server still running in another tab.
+  Try this:
+    1. Find it: Get-NetTCPConnection -LocalPort 3000 | Select-Object OwningProcess
+    2. Stop it: Stop-Process -Id <OwningProcess>
+```
+
+It knows about 20 common errors: ports in use, missing modules, git push rejected, merge conflicts, auth failures, blocked scripts, network and SSL problems, and more. For errors printed by other programs, copy the message (select + Ctrl+C) and run `glowsh why`, or paste it: `glowsh why "the error"`.
+
+### 🖼️ Community theme gallery
+
+```powershell
+glowsh browse          # browse & install community themes, with live preview
+glowsh submit          # share your current theme with the gallery
+```
+
+`glowsh submit` opens a pre-filled GitHub issue with your theme code. Approved themes are added to [`themes/community.json`](themes/community.json) and show up in everyone's `glowsh browse`.
+
 ### 🌏 Bilingual
 
 The whole interface speaks **English** and **Bahasa Indonesia**. Switch anytime with `glowsh lang en` / `glowsh lang id`.
@@ -120,9 +154,13 @@ The whole interface speaks **English** and **Bahasa Indonesia**. Switch anytime 
 | `glowsh share [name]` | share a theme as a code |
 | `glowsh import <code> [name]` | install a theme from a code |
 | `glowsh explain <command>` | explain what a command does |
+| `glowsh why ["error"]` | explain the last error and how to fix it |
+| `glowsh wrapped [year]` | your year in the terminal (+ IG story image) |
+| `glowsh browse` | community theme gallery |
+| `glowsh submit [name]` | share a theme with the gallery |
 | `glowsh doctor` | diagnose & fix display issues |
 | `glowsh settings` | see every feature and whether it's on |
-| `glowsh <feature> on\|off` | toggle `greet`, `auto`, `seasonal`, `notify`, `typo`, `guard` |
+| `glowsh <feature> on\|off` | toggle `greet`, `auto`, `seasonal`, `notify`, `typo`, `guard`, `stats` |
 | `glowsh notify <seconds>` · `glowsh notify test` | notification threshold / send a test notification |
 | `glowsh lang en\|id` | switch language |
 | `glowsh update` | update to the latest version |
