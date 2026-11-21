@@ -113,6 +113,7 @@ glowsh hijri +1               # koreksi tanggal hijriah kalau beda dengan peneta
 glowsh name Abid              # nama di prompt & sapaan
 glowsh quote agama            # quote acak dari satu kategori
 glowsh quote kinds lucu,hidup # kategori yang dipakai quote harian
+glowsh quote mode acak        # quote baru setiap terminal dibuka (bawaan: harian)
 glowsh go                     # daftar folder terakhir, lalu: glowsh go 2 / glowsh go web
 glowsh calendar off           # tiap panel bisa dimatikan: logo, sysinfo, calendar, quote, recent
 ```

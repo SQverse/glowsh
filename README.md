@@ -113,6 +113,7 @@ glowsh hijri +1              # shift the Hijri date if your local announcement d
 glowsh name Abid             # the name in your prompt & greeting
 glowsh quote faith           # a random quote from one category
 glowsh quote kinds fun,life  # which categories the daily quote uses
+glowsh quote mode random     # a new quote every time a terminal opens (default: daily)
 glowsh go                    # list recent folders, then: glowsh go 2 / glowsh go web
 glowsh calendar off          # every panel can be turned off: logo, sysinfo, calendar, quote, recent
 ```

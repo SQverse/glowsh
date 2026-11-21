@@ -19,7 +19,7 @@
 #>
 
 # ============================================================ konfigurasi
-$GlowshVersion = '0.5.1'
+$GlowshVersion = '0.5.2'
 $GlowshRepoRaw = 'https://raw.githubusercontent.com/SQverse/glowsh/main'
 $GlowHome      = Join-Path $HOME '.glowsh'
 $BinDir        = Join-Path $GlowHome 'bin'
@@ -333,7 +333,7 @@ function Get-GlowshCalendarPanel($Pal, $Culture, [string]$Icon, [datetime]$Now, 
     $lines = New-Object System.Collections.Generic.List[string]
     $mi = Get-GlowshMoon $Now
     if ($Moon) {
-        $art = @(Get-GlowshMoonArt $mi $Pal 16)
+        $art = @(Get-GlowshMoonArt $mi $Pal 8 18)
         for ($i = 0; $i -lt [Math]::Max($grid.Count, $art.Count); $i++) {
             $left = if ($i -lt $grid.Count) { $grid[$i] } else { '' }
             $right = if ($i -lt $art.Count) { $art[$i] } else { '' }
@@ -486,15 +486,17 @@ function Get-GlowshMoon([datetime]$Now) {
 }
 
 # Gambar bulan dengan setengah-blok: tiap karakter = 2 piksel (atas & bawah), jadi lingkarannya halus
-function Get-GlowshMoonArt($Moon, $Pal, [int]$Size = 16) {
+# $Rows baris teks (= 2x piksel tinggi), $Cols kolom. Karakter terminal lebih ramping dari 1:2
+# (Meslo di Windows Terminal kira-kira 0,42), jadi 8 baris butuh ~18 kolom supaya bulannya bulat.
+function Get-GlowshMoonArt($Moon, $Pal, [int]$Rows = 8, [int]$Cols = 18) {
     $e = [char]27
-    $half = $Size / 2.0
+    $halfX = $Cols / 2.0; $halfY = $Rows    # tinggi dalam piksel = 2 x baris
     $k = [Math]::Cos($Moon.Theta)
     $bg = @($Pal.bg -split ';' | ForEach-Object { [int]$_ }); $mu = @($Pal.cm -split ';' | ForEach-Object { [int]$_ })
     $dark = @(0, 1, 2 | ForEach-Object { [int]($bg[$_] + ($mu[$_] - $bg[$_]) * 0.35) }) -join ';'
     $light = @(255, 246, 214); $shade = @(206, 192, 150)
     $pixel = { param($px, $py)
-        $nx = ($px + 0.5 - $half) / $half; $ny = ($py + 0.5 - $half) / $half
+        $nx = ($px + 0.5 - $halfX) / $halfX; $ny = ($py + 0.5 - $halfY) / $halfY
         $d2 = $nx * $nx + $ny * $ny
         if ($d2 -gt 1.0) { return $null }
         $w = [Math]::Sqrt([Math]::Max(0.0, 1.0 - $ny * $ny))
@@ -503,19 +505,19 @@ function Get-GlowshMoonArt($Moon, $Pal, [int]$Size = 16) {
         $t = [Math]::Sqrt($d2)    # makin ke tepi makin redup: efek bola 3D
         return (@(0, 1, 2 | ForEach-Object { [int]($light[$_] + ($shade[$_] - $light[$_]) * $t) }) -join ';')
     }
-    $rows = New-Object System.Collections.Generic.List[string]
-    for ($ry = 0; $ry -lt $Size / 2; $ry++) {
+    $artRows = New-Object System.Collections.Generic.List[string]
+    for ($ry = 0; $ry -lt $Rows; $ry++) {
         $sb = New-Object System.Text.StringBuilder
-        for ($cx = 0; $cx -lt $Size; $cx++) {
+        for ($cx = 0; $cx -lt $Cols; $cx++) {
             $top = & $pixel $cx (2 * $ry); $bot = & $pixel $cx (2 * $ry + 1)
             if ($top -and $bot) { [void]$sb.Append("$e[38;2;${top};48;2;${bot}m" + [char]0x2580 + "$e[0m") }
             elseif ($top) { [void]$sb.Append("$e[38;2;${top}m" + [char]0x2580 + "$e[0m") }
             elseif ($bot) { [void]$sb.Append("$e[38;2;${bot}m" + [char]0x2584 + "$e[0m") }
             else { [void]$sb.Append(' ') }
         }
-        $rows.Add($sb.ToString())
+        $artRows.Add($sb.ToString())
     }
-    return $rows.ToArray()
+    return $artRows.ToArray()
 }
 
 # ---------- folder terakhir (untuk panel & glowsh go)
@@ -1232,7 +1234,8 @@ if (Get-GlowshSetting 'greet' $true) {
             }
             if (Get-GlowshSetting 'quote' $true) {
                 try {
-                    $__grQ = Get-GlowshQuote (Get-GlowshQuoteKinds (Get-GlowshSetting 'quoteKinds' $null))
+                    # mode "harian": quote sama sepanjang hari; mode "acak": ganti setiap kali terminal dibuka
+                    $__grQ = Get-GlowshQuote (Get-GlowshQuoteKinds (Get-GlowshSetting 'quoteKinds' $null)) -Random:([string](Get-GlowshSetting 'quoteMode' 'harian') -eq 'acak')
                     $__grPanels += ,@(Get-GlowshQuotePanel $__grPal $__grQ (& $__grIc 0xF10D) 40)
                 } catch {}
             }
@@ -2936,6 +2939,8 @@ function Show-GlowshSettings {
         Write-Host (L $GlowshToggles[$k][1] $GlowshToggles[$k][2])
     }
     Write-Host ('    {0,-10}{1,-5}{2}' -f 'lang', $GlowshLang, (L 'bahasa (id / en)' 'language (id / en)'))
+    $qm = [string](Get-GlowshSettingValue 'quoteMode'); if (-not $qm) { $qm = 'harian' }
+    Write-Host ('    {0,-10}{1,-7}{2}' -f 'quote mode', $qm, (L '(harian / acak): glowsh quote mode acak' '(daily / random): glowsh quote mode random'))
     Write-Host ''
     Write-Host ('  ' + (L 'Ubah: glowsh <nama> on|off   contoh: glowsh greet off' 'Change: glowsh <name> on|off   e.g. glowsh greet off')) -ForegroundColor DarkGray
     Write-Host ('  ' + (L 'Batas notifikasi: glowsh notify <detik>   uji: glowsh notify test' 'Notification threshold: glowsh notify <seconds>   test: glowsh notify test')) -ForegroundColor DarkGray
@@ -3035,6 +3040,20 @@ if (-not $GlowshAsLibrary -and $MyInvocation.InvocationName -ne '.') {
         'explain' { Show-GlowshExplain $Arguments }
         'quote' {
             if ($arg1 -in 'on', 'off') { }   # biarkan ditangani pengaturan on/off di bawah
+            elseif ($arg1 -eq 'mode') {
+                $want = if ($Arguments.Count -gt 1) { $Arguments[1].ToLower() } else { '' }
+                if ($want -in 'acak', 'random') { $want = 'acak' } elseif ($want -in 'harian', 'daily') { $want = 'harian' }
+                else {
+                    $cur = [string](Get-GlowshSettingValue 'quoteMode'); if (-not $cur) { $cur = 'harian' }
+                    Write-Host ('  ' + (L 'Mode quote sekarang: ' 'Quote mode now: ') + $(if ($cur -eq 'acak') { L 'acak (ganti tiap terminal dibuka)' 'random (changes every new terminal)' } else { L 'harian (sama sepanjang hari)' 'daily (same all day)' }))
+                    Write-Host ('  ' + (L 'Ubah: glowsh quote mode acak   atau   glowsh quote mode harian' 'Change: glowsh quote mode random   or   glowsh quote mode daily')) -ForegroundColor DarkGray
+                    break
+                }
+                Set-GlowshConfigValue 'quoteMode' $want
+                Write-Ok $(if ($want -eq 'acak') { L 'Quote akan berganti setiap kali terminal dibuka.' 'Quotes now change every time a terminal opens.' } else { L 'Quote akan sama sepanjang hari, berganti besok.' 'Quotes now stay the same all day and change tomorrow.' })
+                Write-Host ('  ' + (L 'Berlaku di tab terminal baru.' 'Takes effect in new terminal tabs.')) -ForegroundColor DarkGray
+                break
+            }
             elseif ($arg1 -in 'kinds', 'kategori') {
                 $sel = @((($Arguments | Select-Object -Skip 1) -join ',') -split '[,\s]+' | Where-Object { $_ } |
                     ForEach-Object { $k = $_.ToLower(); if ($GlowshQuoteAlias.ContainsKey($k)) { $GlowshQuoteAlias[$k] } else { $k } })
@@ -3065,6 +3084,7 @@ if (-not $GlowshAsLibrary -and $MyInvocation.InvocationName -ne '.') {
                 foreach ($l in (Get-GlowshQuotePanel $pal (Get-GlowshQuote $kinds -Random) $ic 46)) { Write-Host "  $l" }
                 Write-Host ''
                 Write-Host ('  ' + (L 'Lagi: glowsh quote   Kategori: glowsh quote lucu|hidup|agama|diri   Atur harian: glowsh quote kinds lucu,diri' 'Another: glowsh quote   Category: glowsh quote fun|life|faith|growth   Daily: glowsh quote kinds fun,growth')) -ForegroundColor DarkGray
+                Write-Host ('  ' + (L 'Mode di sapaan: glowsh quote mode harian | acak' 'Greeting mode: glowsh quote mode daily | random')) -ForegroundColor DarkGray
                 Write-Host ''
                 break
             }
