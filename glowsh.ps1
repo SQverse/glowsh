@@ -19,7 +19,7 @@
 #>
 
 # ============================================================ konfigurasi
-$GlowshVersion = '0.4.0'
+$GlowshVersion = '0.4.1'
 $GlowshRepoRaw = 'https://raw.githubusercontent.com/SQverse/glowsh/main'
 $GlowHome      = Join-Path $HOME '.glowsh'
 $BinDir        = Join-Path $GlowHome 'bin'
@@ -48,6 +48,7 @@ $WtTargets = [ordered]@{
 # Fitur yang bisa dinyalakan/dimatikan: nama = (default, deskripsi id, deskripsi en)
 $GlowshToggles = [ordered]@{
     greet    = @($true,  'sapaan saat terminal dibuka', 'greeting when a terminal opens')
+    logo     = @($true,  'logo ASCII Glowsh di sapaan', 'Glowsh ASCII logo in the greeting')
     auto     = @($false, 'tema mengikuti waktu: pagi > senja > neon', 'theme follows the time: pagi > senja > neon')
     seasonal = @($true,  'tema musiman: 17 Agustus, Ramadan, Tahun Baru', 'seasonal themes: Aug 17, Ramadan, New Year')
     notify   = @($true,  'notifikasi saat perintah lama selesai', 'notification when a long command finishes')
@@ -656,38 +657,95 @@ $null = Register-EngineEvent -SourceIdentifier PowerShell.OnIdle -MaxTriggerCoun
 try { Set-PSReadLineOption -PredictionSource History -PredictionViewStyle ListView -ErrorAction Stop } catch {}
 
 if (Get-GlowshSetting 'greet' $true) {
+    # Semua variabel sementara diawali "__gr" supaya mudah dibersihkan di akhir
     try {
-        $__now = Get-Date
-        $__h = $__now.Hour
-        $__greet = if ($__h -ge 4 -and $__h -lt 11) { Get-GlowshText 'Selamat pagi' 'Good morning' }
-                   elseif ($__h -ge 11 -and $__h -lt 15) { Get-GlowshText 'Selamat siang' 'Good afternoon' }
-                   elseif ($__h -ge 15 -and $__h -lt 18) { Get-GlowshText 'Selamat sore' 'Good afternoon' }
-                   else { Get-GlowshText 'Selamat malam' 'Good evening' }
-        $__culture = [Globalization.CultureInfo]::GetCultureInfo($(if ($GlowshLang -eq 'en') { 'en-US' } else { 'id-ID' }))
-        $__info = $__now.ToString('dddd, d MMMM yyyy', $__culture)
+        $__grNow = Get-Date
+        $__grH = $__grNow.Hour
+        $__grGreet = if ($__grH -ge 4 -and $__grH -lt 11) { Get-GlowshText 'Selamat pagi' 'Good morning' }
+                     elseif ($__grH -ge 11 -and $__grH -lt 15) { Get-GlowshText 'Selamat siang' 'Good afternoon' }
+                     elseif ($__grH -ge 15 -and $__grH -lt 18) { Get-GlowshText 'Selamat sore' 'Good afternoon' }
+                     else { Get-GlowshText 'Selamat malam' 'Good evening' }
+        $__grCulture = [Globalization.CultureInfo]::GetCultureInfo($(if ($GlowshLang -eq 'en') { 'en-US' } else { 'id-ID' }))
+
+        # Warna dari tema aktif (ditulis glowsh saat ganti tema): aksen1;aksen2;redup;nama tema
+        $__grAcc = @('#FF2E88', '#00F0FF', '#8A87B8', '')
+        try { $__grF = ([IO.File]::ReadAllText((Join-Path $GlowshHome 'accent.txt'))).Trim() -split ';'; if ($__grF.Count -ge 4) { $__grAcc = $__grF } } catch {}
+        $__grE = [char]27
+        $__grRgb = { param($hex) $x = $hex.TrimStart('#'); @([Convert]::ToInt32($x.Substring(0, 2), 16), [Convert]::ToInt32($x.Substring(2, 2), 16), [Convert]::ToInt32($x.Substring(4, 2), 16)) }
+        $__grP1 = & $__grRgb $__grAcc[0]; $__grP2 = & $__grRgb $__grAcc[1]; $__grPm = & $__grRgb $__grAcc[2]
+        $__grC1 = $__grP1 -join ';'; $__grC2 = $__grP2 -join ';'; $__grCm = $__grPm -join ';'
+
+        $__grIcon = ''
+        if ($env:WT_SESSION) { $__grIcon = [string][char]$(if ($__grH -ge 6 -and $__grH -lt 18) { 0xF185 } else { 0xF186 }) + ' ' }
+        $__grLines = @("$__grE[1;38;2;${__grC1}m$__grIcon$__grGreet, $env:USERNAME!$__grE[0m")
+        $__grLines += "$__grE[38;2;${__grCm}m$($__grNow.ToString('dddd, d MMMM yyyy', $__grCulture))$__grE[0m"
         try {
             Add-Type -AssemblyName System.Windows.Forms
-            $__ps = [System.Windows.Forms.SystemInformation]::PowerStatus
-            if ($__ps.BatteryChargeStatus.ToString() -notmatch 'NoSystemBattery|Unknown') {
-                $__info += '  |  ' + (Get-GlowshText 'baterai ' 'battery ') + [int]($__ps.BatteryLifePercent * 100) + '%'
-                if ($__ps.PowerLineStatus.ToString() -eq 'Online') { $__info += ' +' }
+            $__grPs = [System.Windows.Forms.SystemInformation]::PowerStatus
+            if ($__grPs.BatteryChargeStatus.ToString() -notmatch 'NoSystemBattery|Unknown') {
+                $__grBat = (Get-GlowshText 'baterai ' 'battery ') + [int]($__grPs.BatteryLifePercent * 100) + '%'
+                if ($__grPs.PowerLineStatus.ToString() -eq 'Online') { $__grBat += (Get-GlowshText ' (dicas)' ' (charging)') }
+                $__grLines += "$__grE[38;2;${__grCm}m$__grBat$__grE[0m"
             }
         } catch {}
-        $__icon = ''
-        if ($env:WT_SESSION) { $__icon = [string][char]$(if ($__h -ge 6 -and $__h -lt 18) { 0xF185 } else { 0xF186 }) + ' ' }
-        Write-Host ''
-        Write-Host "  $__icon$__greet, $env:USERNAME!" -ForegroundColor Magenta -NoNewline
-        Write-Host "   $__info" -ForegroundColor DarkGray
-        $__season = Get-GlowshSeason $__now
-        $__seasonText = @{
+        if ($__grAcc[3]) { $__grLines += "$__grE[38;2;${__grCm}m" + (Get-GlowshText 'tema ' 'theme ') + "$__grE[38;2;${__grC2}m$($__grAcc[3])$__grE[0m" }
+        $__grSeason = Get-GlowshSeason $__grNow
+        $__grSeasonText = @{
             merdeka   = @('Dirgahayu Republik Indonesia! Merdeka!', 'Happy Indonesian Independence Day! Merdeka!')
             ramadan   = @('Selamat menunaikan ibadah puasa Ramadan.', 'Ramadan Kareem!')
             tahunbaru = @('Selamat Tahun Baru!', 'Happy New Year!')
         }
-        if ($__season -and (Get-GlowshSetting 'seasonal' $true)) {
-            Write-Host ('  ' + (Get-GlowshText $__seasonText[$__season][0] $__seasonText[$__season][1])) -ForegroundColor Yellow
+        if ($__grSeason -and (Get-GlowshSetting 'seasonal' $true)) {
+            $__grLines += "$__grE[1;38;2;${__grC2}m" + (Get-GlowshText $__grSeasonText[$__grSeason][0] $__grSeasonText[$__grSeason][1]) + "$__grE[0m"
         }
-        $__tips = @(
+
+        $__grWidth = 80
+        try { $__grWidth = $Host.UI.RawUI.WindowSize.Width } catch {}
+        Write-Host ''
+        if ((Get-GlowshSetting 'logo' $true) -and $__grWidth -ge 58) {
+            # Logo GLOWSH dari huruf blok. Disimpan sebagai kode ASCII (file ini harus ASCII-only),
+            # diubah ke karakter aslinya di sini: # = blok penuh, q w e z = sudut, v = garis tegak, = = garis datar
+            $__grArt = @(
+                ' ######q ##q      ######q ##q    ##q#######q##q  ##q',
+                '##w====e ##v     ##w===##q##v    ##v##w====e##v  ##v',
+                '##v  ###q##v     ##v   ##v##v #q ##v#######q#######v',
+                '##v   ##v##v     ##v   ##v##v###q##vz====##v##w==##v',
+                'z######we#######qz######wez###w###we#######v##v  ##v',
+                ' z=====e z======e z=====e  z==ez==e z======ez=e  z=e'
+            )
+            $__grMap = @{ '#' = 0x2588; 'q' = 0x2557; 'w' = 0x2554; 'e' = 0x255D; 'z' = 0x255A; 'v' = 0x2551; '=' = 0x2550 }
+            $__grLogo = foreach ($__grRow in $__grArt) {
+                $__grSb = New-Object System.Text.StringBuilder
+                for ($__grJ = 0; $__grJ -lt $__grRow.Length; $__grJ++) {
+                    $__grCh = [string]$__grRow[$__grJ]
+                    if ($__grCh -eq ' ') { [void]$__grSb.Append(' '); continue }
+                    # gradasi warna dari kiri (aksen 1) ke kanan (aksen 2)
+                    $__grT = $__grJ / ($__grRow.Length - 1)
+                    $__grRgbNow = @(0, 1, 2 | ForEach-Object { [int]($__grP1[$_] + ($__grP2[$_] - $__grP1[$_]) * $__grT) }) -join ';'
+                    [void]$__grSb.Append("$__grE[38;2;${__grRgbNow}m" + [string][char]$__grMap[$__grCh])
+                }
+                [void]$__grSb.Append("$__grE[0m")
+                $__grSb.ToString()
+            }
+            if ($__grWidth -ge 100) {
+                # Jendela lebar: info di samping logo, rata tengah
+                $__grOff = [Math]::Max(0, [int][Math]::Floor((6 - $__grLines.Count) / 2))
+                for ($__grI = 0; $__grI -lt 6; $__grI++) {
+                    $__grK = $__grI - $__grOff
+                    $__grRight = if ($__grK -ge 0 -and $__grK -lt $__grLines.Count) { '    ' + $__grLines[$__grK] } else { '' }
+                    Write-Host ('  ' + $__grLogo[$__grI] + $__grRight)
+                }
+                for ($__grK = 6 - $__grOff; $__grK -lt $__grLines.Count; $__grK++) { Write-Host ((' ' * 58) + $__grLines[$__grK]) }
+            } else {
+                foreach ($__grL in $__grLogo) { Write-Host ('  ' + $__grL) }
+                Write-Host ''
+                foreach ($__grL in $__grLines) { Write-Host ('  ' + $__grL) }
+            }
+        } else {
+            # Versi ringkas (logo dimatikan atau jendela terlalu sempit)
+            Write-Host ('  ' + $__grLines[0] + "$__grE[38;2;${__grCm}m   " + ((@($__grLines | Select-Object -Skip 1) | ForEach-Object { $_ -replace "$([char]27)\[[0-9;]*m", '' }) -join '  |  ') + "$__grE[0m")
+        }
+        $__grTips = @(
             @('ketik "glowsh theme" untuk ganti tema dengan preview', 'type "glowsh theme" to switch themes with a preview'),
             @('"glowsh wallpaper" membuat tema dari wallpaper kamu', '"glowsh wallpaper" builds a theme from your wallpaper'),
             @('"glowsh explain <perintah>" menjelaskan arti sebuah perintah', '"glowsh explain <command>" explains what a command does'),
@@ -695,14 +753,17 @@ if (Get-GlowshSetting 'greet' $true) {
             @('"glowsh share" menghasilkan kode untuk berbagi tema', '"glowsh share" gives you a code to share your theme'),
             @('ada yang aneh? jalankan "glowsh doctor"', 'something looks off? run "glowsh doctor"'),
             @('tekan panah kanan untuk menerima saran perintah', 'press the right arrow to accept a command suggestion'),
-            @('matikan sapaan ini dengan "glowsh greet off"', 'turn this greeting off with "glowsh greet off"')
+            @('matikan sapaan ini dengan "glowsh greet off"', 'turn this greeting off with "glowsh greet off"'),
+            @('"glowsh wrapped" menampilkan rekap tahunan terminal kamu', '"glowsh wrapped" shows your year in the terminal'),
+            @('error? ketik "glowsh why" untuk penjelasan & solusinya', 'got an error? type "glowsh why" for an explanation & fix'),
+            @('logo ini bisa dimatikan dengan "glowsh logo off"', 'turn this logo off with "glowsh logo off"')
         )
-        $__tip = $__tips[(Get-Random -Maximum $__tips.Count)]
-        Write-Host ('  Tip: ' + (Get-GlowshText $__tip[0] $__tip[1])) -ForegroundColor DarkGray
+        $__grTip = $__grTips[(Get-Random -Maximum $__grTips.Count)]
+        Write-Host ''
+        Write-Host ("  $__grE[38;2;${__grCm}mTip: " + (Get-GlowshText $__grTip[0] $__grTip[1]) + "$__grE[0m")
         Write-Host ''
     } catch {}
-    Get-Variable -Name '__now', '__h', '__greet', '__culture', '__info', '__ps', '__icon', '__season', '__seasonText', '__tips', '__tip' -ErrorAction SilentlyContinue |
-        Remove-Variable -ErrorAction SilentlyContinue
+    Get-Variable -Name '__gr*' -ErrorAction SilentlyContinue | Remove-Variable -ErrorAction SilentlyContinue
 }
 '@
 
@@ -1407,6 +1468,11 @@ function Set-GlowshTheme([string]$Id, [switch]$Explicit) {
     try { Set-ConsoleColors $t; Write-Ok (L 'Warna console klasik' 'Classic console colors') }
     catch { Write-Bad "Console: $($_.Exception.Message)"; $fails++ }
     Write-Utf8NoBom $StateFile $Id
+    # Warna aksen untuk logo & sapaan di shell.ps1 (dibaca saat terminal dibuka, supaya startup tetap cepat)
+    try {
+        $acc = Get-ThemeAccents $t
+        Write-Utf8NoBom (Join-Path $GlowHome 'accent.txt') (@($acc.a1, $acc.a2, $acc.muted, $t.Title) -join ';')
+    } catch {}
 
     if ($Explicit) {
         Set-GlowshConfigValue 'baseTheme' $Id
