@@ -19,7 +19,7 @@
 #>
 
 # ============================================================ konfigurasi
-$GlowshVersion = '0.3.0'
+$GlowshVersion = '0.3.1'
 $GlowshRepoRaw = 'https://raw.githubusercontent.com/SQverse/glowsh/main'
 $GlowHome      = Join-Path $HOME '.glowsh'
 $BinDir        = Join-Path $GlowHome 'bin'
@@ -378,10 +378,19 @@ $global:GlowshLang = [string](Get-GlowshSetting 'lang' 'id')
 #__SHARED__
 
 # ---------- prompt & tema otomatis
+# Terminal modern (bisa Nerd Font) vs jendela console klasik (conhost) yang tidak bisa menampilkan ikon
+function Test-GlowshModernTerminal {
+    return [bool]($env:WT_SESSION -or $env:TERM_PROGRAM -or $env:ConEmuANSI -eq 'ON' -or $env:WEZTERM_PANE -or $env:ALACRITTY_LOG)
+}
+
 function Initialize-GlowshPrompt {
     $omp = Join-Path $GlowshHome 'bin\oh-my-posh.exe'
     if (-not (Test-Path $omp)) { return }
-    & $omp init pwsh --config (Join-Path $GlowshHome 'theme.omp.json') | Invoke-Expression
+    # Di jendela klasik pakai prompt "lite" tanpa ikon supaya tidak muncul kotak-kotak
+    $cfg = Join-Path $GlowshHome 'theme.omp.json'
+    $lite = Join-Path $GlowshHome 'theme-lite.omp.json'
+    if (-not (Test-GlowshModernTerminal) -and (Test-Path $lite)) { $cfg = $lite }
+    & $omp init pwsh --config $cfg | Invoke-Expression
     if ($function:prompt -and $function:prompt.ToString() -notmatch 'Invoke-GlowshPromptHook') {
         $global:__glowshPrompt = $function:prompt
     }
@@ -588,9 +597,22 @@ if ((Get-GlowshSetting 'guard' $true) -and (Get-Module PSReadLine)) {
 }
 
 # ---------- mulai
+# Jendela PowerShell klasik dari Start Menu memakai latar biru bawaan shortcut; ganti ke latar gelap
+if (-not (Test-GlowshModernTerminal) -and $Host.Name -eq 'ConsoleHost') {
+    try {
+        if ($Host.UI.RawUI.BackgroundColor -ne 'Black') {
+            $Host.UI.RawUI.BackgroundColor = 'Black'
+            $Host.UI.RawUI.ForegroundColor = 'Gray'
+            Clear-Host
+        }
+    } catch {}
+}
 Sync-GlowshTheme -Startup
 Initialize-GlowshPrompt
-try { Import-Module Terminal-Icons -ErrorAction Stop } catch {}
+# Terminal-Icons lambat dimuat (1-2 detik) dan baru dibutuhkan saat ls/dir, jadi dimuat setelah prompt tampil
+$null = Register-EngineEvent -SourceIdentifier PowerShell.OnIdle -MaxTriggerCount 1 -Action {
+    try { Import-Module Terminal-Icons -Global -ErrorAction Stop } catch {}
+}
 try { Set-PSReadLineOption -PredictionSource History -PredictionViewStyle ListView -ErrorAction Stop } catch {}
 
 if (Get-GlowshSetting 'greet' $true) {
@@ -1057,9 +1079,13 @@ function Install-GlowshClink {
     # Dimuat Clink setiap CMD dibuka -> menjalankan prompt Oh My Posh.
     # Tanda kutip ganda di luar diperlukan karena io.popen memakai "cmd /c".
     $lua = @'
--- Glowsh: prompt Oh My Posh untuk CMD
+-- Glowsh: prompt Oh My Posh untuk CMD (versi lite tanpa ikon di jendela console klasik)
 local glow = os.getenv("USERPROFILE") .. "\\.glowsh"
-local f = io.popen('""' .. glow .. '\\bin\\oh-my-posh.exe" init cmd --config "' .. glow .. '\\theme.omp.json""')
+local cfg = glow .. "\\theme.omp.json"
+if not os.getenv("WT_SESSION") and not os.getenv("TERM_PROGRAM") and os.isfile(glow .. "\\theme-lite.omp.json") then
+    cfg = glow .. "\\theme-lite.omp.json"
+end
+local f = io.popen('""' .. glow .. '\\bin\\oh-my-posh.exe" init cmd --config "' .. cfg .. '""')
 if f then
     local script = f:read("*a")
     f:close()
@@ -1097,6 +1123,7 @@ function Install-PortableTerminal {
         $lnk.IconLocation = "$WtPortableExe,0"
         $lnk.Save()
     }
+    [void](Register-GlowshWtAlias)
     return $rel.tag_name
 }
 
@@ -1184,6 +1211,30 @@ function New-SignaturePrompt($Theme) {
     $a = Get-ThemeAccents $Theme
     return $GlowshPromptTemplate.Replace('__BG__', $Theme.Scheme.background).Replace('__A1__', $a.a1).Replace('__A2__', $a.a2).
         Replace('__A3__', $a.a3).Replace('__A4__', $a.a4).Replace('__OK__', $a.ok).Replace('__ERR__', $a.err).Replace('__MUTED__', $a.muted)
+}
+
+# Versi tanpa glyph Nerd Font untuk jendela console klasik: warna tetap, ikon diganti teks biasa
+function New-LitePrompt($Theme) {
+    $j = New-SignaturePrompt $Theme
+    $map = [ordered]@{
+        '"template": "{{ .Icon }} "' = '"template": "{{ if .WSL }}WSL {{ end }}"'   # template kosong = OMP pakai default (berikon)
+        '"options": { "fetch_status": true }' = '"options": { "fetch_status": true, "branch_icon": "", "commit_icon": "@", "tag_icon": "#" }'
+        '\uf00d ' = 'x '; '\uf00c' = 'ok'; '\uf044' = '~'; '\uf046' = '+'
+        ' \uf07c ' = ' '; '\uf252 ' = ''; '\uf017 ' = ''; '\u276f' = '>'
+        '\ue0b6' = ''; '\ue0b4' = ''; '\ue0b0' = ''
+    }
+    foreach ($k in $map.Keys) { $j = $j.Replace($k, $map[$k]) }
+    return $j
+}
+
+# Supaya "wt" bisa dipakai dari Win+R / Start untuk Windows Terminal versi portable
+function Register-GlowshWtAlias {
+    if (-not (Test-Path $WtPortableExe)) { return $false }
+    $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\App Paths\wt.exe'
+    New-Item -Path $key -Force | Out-Null
+    Set-ItemProperty -Path $key -Name '(default)' -Value $WtPortableExe
+    Set-ItemProperty -Path $key -Name 'Path' -Value $WtPortableDir
+    return $true
 }
 
 function Update-WTSettings($Theme) {
@@ -1279,6 +1330,7 @@ function Set-GlowshTheme([string]$Id, [switch]$Explicit) {
             }
             Copy-Item $cached $ThemeFile -Force
         } else { Write-Utf8NoBom $ThemeFile (New-SignaturePrompt $t) }
+        Write-Utf8NoBom (Join-Path $GlowHome 'theme-lite.omp.json') (New-LitePrompt $t)
         Write-Ok "Prompt: $($t.Title)"
     } catch { Write-Bad "Prompt: $($_.Exception.Message)"; $fails++ }
     $fails += Update-WTSettings $t

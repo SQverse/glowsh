@@ -170,7 +170,10 @@ $warnings += $stepFails.n
 
 # ============================================================ 6. windows terminal
 Write-Step 'Windows Terminal'
-if ($hasWT) { Write-Ok (L 'Sudah terpasang' 'Already installed') }
+if ($hasWT) {
+    Write-Ok (L 'Sudah terpasang' 'Already installed')
+    try { if (Register-GlowshWtAlias) { Write-Ok (L 'Buka cepat: Win + R, ketik "wt"' 'Quick launch: Win + R, type "wt"') } } catch {}
+}
 else {
     Write-Note (L 'Windows Terminal belum terpasang. Ikon & tema paling bagus tampil di sana.' 'Windows Terminal is not installed. Icons & themes look best there.')
     if (Read-YesNo (L 'Install Windows Terminal sekarang? (rilis resmi Microsoft dari GitHub, tanpa Store, ~12 MB)' 'Install Windows Terminal now? (official Microsoft release from GitHub, no Store, ~12 MB)')) {
