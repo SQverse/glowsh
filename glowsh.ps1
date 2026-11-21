@@ -19,7 +19,7 @@
 #>
 
 # ============================================================ konfigurasi
-$GlowshVersion = '0.4.2'
+$GlowshVersion = '0.5.1'
 $GlowshRepoRaw = 'https://raw.githubusercontent.com/SQverse/glowsh/main'
 $GlowHome      = Join-Path $HOME '.glowsh'
 $BinDir        = Join-Path $GlowHome 'bin'
@@ -49,6 +49,12 @@ $WtTargets = [ordered]@{
 $GlowshToggles = [ordered]@{
     greet    = @($true,  'sapaan saat terminal dibuka', 'greeting when a terminal opens')
     logo     = @($true,  'logo ASCII Glowsh di sapaan', 'Glowsh ASCII logo in the greeting')
+    sysinfo  = @($true,  'panel sistem di sapaan (RAM, disk, statistik hari ini)', 'system panel in the greeting (RAM, disk, today)')
+    calendar = @($true,  'kalender bulan ini + tanggal hijriah di sapaan', 'this month''s calendar + Hijri date in the greeting')
+    moon     = @($true,  'gambar fase bulan di kalender', 'moon phase drawing in the calendar')
+    sholat   = @($true,  'jadwal sholat di sapaan (atur: glowsh lokasi <kota>)', 'prayer times in the greeting (set: glowsh lokasi <city>)')
+    quote    = @($true,  'quote harian di sapaan (lucu, hidup, agama, diri)', 'daily quote in the greeting (fun, life, faith, growth)')
+    recent   = @($true,  'folder terakhir dibuka di sapaan (glowsh go)', 'recent folders in the greeting (glowsh go)')
     auto     = @($false, 'tema mengikuti waktu: pagi > senja > neon', 'theme follows the time: pagi > senja > neon')
     seasonal = @($true,  'tema musiman: 17 Agustus, Ramadan, Tahun Baru', 'seasonal themes: Aug 17, Ramadan, New Year')
     notify   = @($true,  'notifikasi saat perintah lama selesai', 'notification when a long command finishes')
@@ -126,6 +132,465 @@ function Get-GlowshCommandHead([string]$Line) {
     $withSub = 'git', 'npm', 'pnpm', 'yarn', 'bun', 'winget', 'docker', 'pip', 'dotnet', 'cargo', 'go', 'gh', 'glowsh', 'scoop', 'choco', 'kubectl', 'composer', 'php', 'flutter', 'ng'
     if ($withSub -contains $cmd -and $parts.Count -gt 1 -and $parts[1] -match '^[a-z][a-z0-9-]{0,20}$') { return "$cmd $($parts[1])" }
     return $cmd
+}
+
+# ---------- komponen tampilan sapaan (juga dipakai "glowsh quote" dan "glowsh go")
+# Quote: @(teks Indonesia, teks Inggris, sumber). Ditulis tanpa apostrof Inggris supaya file tetap aman.
+$GlowshQuotes = [ordered]@{
+    lucu = @(
+        @('Kode yang jalan di laptopku belum tentu jalan di laptopmu.', 'Code that runs on my laptop may not run on yours.', 'pepatah programmer'),
+        @('Ada 10 jenis orang di dunia: yang paham biner dan yang tidak.', 'There are 10 kinds of people: those who understand binary and those who do not.', 'anonim'),
+        @('Debugging itu seperti jadi detektif di film kriminal, padahal kamu juga pelakunya.', 'Debugging is like being the detective in a crime movie where you are also the murderer.', 'Filipe Fortes'),
+        @('99 bug kecil di dalam kode. Perbaiki satu, kompilasi lagi... sekarang ada 127 bug.', '99 little bugs in the code. Fix one, compile again... 127 little bugs in the code.', 'lagu rakyat programmer'),
+        @('Deploy hari Jumat sore? Berani juga kamu.', 'Deploying on a Friday afternoon? Bold move.', 'nasihat senior'),
+        @('Ctrl+S adalah bentuk kasih sayang paling tulus.', 'Ctrl+S is the purest form of self-care.', 'anonim'),
+        @('Ngoding itu 10% menulis kode dan 90% mencari tahu kenapa kodenya tidak jalan.', 'Coding is 10% writing code and 90% figuring out why it does not work.', 'anonim'),
+        @('// jangan diubah, entah kenapa ini jalan', '// do not touch, somehow this works', 'komentar paling jujur'),
+        @('Dua hal tersulit dalam ilmu komputer: cache invalidation dan memberi nama variabel.', 'There are only two hard things in computer science: cache invalidation and naming things.', 'Phil Karlton'),
+        @('Sebelum ngoding: "ah, gampang". Sesudahnya: "kok bisa ya ini jalan?"', 'Before coding: "easy". After: "how does this even work?"', 'anonim')
+    )
+    hidup = @(
+        @('Hidup itu seperti naik sepeda. Agar tetap seimbang, kamu harus terus bergerak.', 'Life is like riding a bicycle. To keep your balance, you must keep moving.', 'Albert Einstein'),
+        @('Terbentur, terbentur, terbentuk.', 'Struck, struck again, and shaped.', 'Tan Malaka'),
+        @('Hidup bukan tentang menunggu badai berlalu, tapi belajar menari di tengah hujan.', 'Life is not about waiting for the storm to pass, it is about learning to dance in the rain.', 'Vivian Greene'),
+        @('Kebahagiaan bukan sesuatu yang sudah jadi. Ia datang dari tindakanmu sendiri.', 'Happiness is not something ready made. It comes from your own actions.', 'Dalai Lama'),
+        @('Orang boleh pandai setinggi langit, tapi selama ia tidak menulis, ia akan hilang di dalam masyarakat dan dari sejarah.', 'One may be as clever as the sky is high, but as long as one does not write, one will vanish from society and from history.', 'Pramoedya Ananta Toer'),
+        @('Bermimpilah setinggi langit. Jika engkau jatuh, engkau akan jatuh di antara bintang-bintang.', 'Dream as high as the sky. If you fall, you will fall among the stars.', 'Soekarno'),
+        @('Hal yang paling sulit adalah memutuskan untuk bertindak. Sisanya hanyalah kegigihan.', 'The most difficult thing is the decision to act. The rest is merely tenacity.', 'Amelia Earhart'),
+        @('Tanpa cinta, kecerdasan itu berbahaya. Dan tanpa kecerdasan, cinta itu tidak cukup.', 'Without love, intelligence is dangerous. And without intelligence, love is not enough.', 'B.J. Habibie')
+    )
+    agama = @(
+        @('Sesungguhnya bersama kesulitan ada kemudahan.', 'Indeed, with hardship comes ease.', 'QS. Al-Insyirah: 6'),
+        @('Allah tidak membebani seseorang melainkan sesuai dengan kesanggupannya.', 'Allah does not burden a soul beyond what it can bear.', 'QS. Al-Baqarah: 286'),
+        @('Ingatlah, hanya dengan mengingat Allah hati menjadi tenteram.', 'Verily, in the remembrance of Allah do hearts find rest.', 'QS. Ar-Ra''d: 28'),
+        @('Maka nikmat Tuhanmu yang manakah yang kamu dustakan?', 'So which of the favors of your Lord would you deny?', 'QS. Ar-Rahman: 13'),
+        @('Janganlah kamu bersikap lemah, dan janganlah pula kamu bersedih hati.', 'So do not weaken and do not grieve.', 'QS. Ali ''Imran: 139'),
+        @('Dan bersabarlah. Sesungguhnya Allah beserta orang-orang yang sabar.', 'And be patient. Indeed, Allah is with the patient.', 'QS. Al-Anfal: 46'),
+        @('Sebaik-baik manusia adalah yang paling bermanfaat bagi manusia lainnya.', 'The best of people are those most beneficial to others.', 'HR. Ath-Thabrani'),
+        @('Barang siapa menempuh jalan untuk mencari ilmu, Allah mudahkan baginya jalan menuju surga.', 'Whoever takes a path in search of knowledge, Allah makes easy for him a path to Paradise.', 'HR. Muslim'),
+        @('Senyummu di hadapan saudaramu adalah sedekah.', 'Your smile to your brother is charity.', 'HR. At-Tirmidzi')
+    )
+    diri = @(
+        @('Kita adalah apa yang kita kerjakan berulang kali. Keunggulan bukanlah tindakan, melainkan kebiasaan.', 'We are what we repeatedly do. Excellence, then, is not an act, but a habit.', 'Will Durant'),
+        @('Perjalanan seribu mil dimulai dari satu langkah.', 'A journey of a thousand miles begins with a single step.', 'Lao Tzu'),
+        @('Bandingkan dirimu dengan dirimu yang kemarin, bukan dengan orang lain hari ini.', 'Compare yourself to who you were yesterday, not to who someone else is today.', 'Jordan Peterson'),
+        @('Kesuksesan adalah jumlah dari usaha kecil yang diulang hari demi hari.', 'Success is the sum of small efforts, repeated day in and day out.', 'Robert Collier'),
+        @('Disiplin adalah jembatan antara tujuan dan pencapaian.', 'Discipline is the bridge between goals and accomplishment.', 'Jim Rohn'),
+        @('Waktu terbaik untuk menanam pohon adalah 20 tahun lalu. Waktu terbaik kedua adalah sekarang.', 'The best time to plant a tree was 20 years ago. The second best time is now.', 'pepatah Tiongkok'),
+        @('Kamu tidak harus hebat untuk memulai, tapi kamu harus memulai untuk menjadi hebat.', 'You do not have to be great to start, but you have to start to be great.', 'Zig Ziglar'),
+        @('Bedanya orang sukses dan yang lain bukan kurang kuat atau kurang pintar, tapi kurang kemauan.', 'The difference between a successful person and others is not a lack of strength or knowledge, but a lack of will.', 'Vince Lombardi')
+    )
+}
+$GlowshQuoteAlias = @{ fun = 'lucu'; life = 'hidup'; faith = 'agama'; growth = 'diri' }
+$GlowshQuoteLabels = @{ lucu = @('lucu', 'fun'); hidup = @('hidup', 'life'); agama = @('agama', 'faith'); diri = @('diri', 'growth') }
+
+# Kategori yang aktif (dari config "quoteKinds"); kosong = semua
+function Get-GlowshQuoteKinds($Configured) {
+    $k = @(@($Configured) | ForEach-Object { [string]$_ } | Where-Object { $_ -and $GlowshQuotes.Contains($_) })
+    if ($k.Count -eq 0) { $k = @($GlowshQuotes.Keys) }
+    return $k
+}
+
+# Quote hari ini (sama sepanjang hari) atau acak (-Random)
+function Get-GlowshQuote([string[]]$Kinds, [switch]$Random) {
+    if (-not $Kinds -or $Kinds.Count -eq 0) { $Kinds = @($GlowshQuotes.Keys) }
+    if ($Random) {
+        $kind = $Kinds[(Get-Random -Maximum $Kinds.Count)]
+        $list = $GlowshQuotes[$kind]
+        $item = $list[(Get-Random -Maximum $list.Count)]
+    } else {
+        $now = Get-Date
+        $day = $now.Year * 366 + $now.DayOfYear
+        $kind = $Kinds[$day % $Kinds.Count]
+        $list = $GlowshQuotes[$kind]
+        $item = $list[([int][Math]::Floor($day / $Kinds.Count)) % $list.Count]
+    }
+    return @{ Kind = $kind; Text = (Get-GlowshText $item[0] $item[1]); Source = $item[2] }
+}
+
+function ConvertTo-GlowshPal([string]$A1, [string]$A2, [string]$Muted, [string]$Err = '#FF5F7E', [string]$Bg = '#101018') {
+    $rgb = { param($hex) $x = ([string]$hex).TrimStart('#'); @([Convert]::ToInt32($x.Substring(0, 2), 16), [Convert]::ToInt32($x.Substring(2, 2), 16), [Convert]::ToInt32($x.Substring(4, 2), 16)) }
+    $p1 = & $rgb $A1; $p2 = & $rgb $A2
+    return @{ P1 = $p1; P2 = $p2; c1 = $p1 -join ';'; c2 = $p2 -join ';'; cm = (& $rgb $Muted) -join ';'; err = (& $rgb $Err) -join ';'; bg = (& $rgb $Bg) -join ';' }
+}
+
+function Get-GlowshVisibleLength([string]$S) { return ($S -replace "$([char]27)\[[0-9;]*m", '').Length }
+
+function Format-GlowshPad([string]$S, [int]$W) {
+    $n = $W - (Get-GlowshVisibleLength $S)
+    if ($n -gt 0) { return $S + (' ' * $n) }
+    return $S
+}
+
+function Split-GlowshWrap([string]$Text, [int]$Width) {
+    $out = New-Object System.Collections.Generic.List[string]
+    $cur = ''
+    foreach ($w in ($Text -split '\s+')) {
+        if (-not $w) { continue }
+        if (-not $cur) { $cur = $w }
+        elseif (($cur.Length + 1 + $w.Length) -le $Width) { $cur += ' ' + $w }
+        else { $out.Add($cur); $cur = $w }
+    }
+    if ($cur) { $out.Add($cur) }
+    return $out.ToArray()
+}
+
+# Panel berbingkai melengkung: judul berwarna aksen, bingkai warna redup
+function New-GlowshBox([string]$Title, [string[]]$Lines, $Pal, [int]$MinWidth = 0) {
+    $e = [char]27; $r = "$e[0m"
+    $hz = [string][char]0x2500; $vt = [string][char]0x2502
+    $tlen = Get-GlowshVisibleLength $Title
+    $inner = $MinWidth
+    foreach ($l in $Lines) { $inner = [Math]::Max($inner, (Get-GlowshVisibleLength $l)) }
+    $inner = [Math]::Max($inner, $tlen + 1)
+    $b = "$e[38;2;$($Pal.cm)m"
+    $out = New-Object System.Collections.Generic.List[string]
+    $out.Add("$b$([char]0x256D)$hz $e[1;38;2;$($Pal.c2)m$Title$r$b " + ($hz * ($inner - 1 - $tlen)) + "$([char]0x256E)$r")
+    foreach ($l in $Lines) { $out.Add("$b$vt$r " + (Format-GlowshPad $l $inner) + " $b$vt$r") }
+    $out.Add("$b$([char]0x2570)" + ($hz * ($inner + 2)) + "$([char]0x256F)$r")
+    return $out.ToArray()
+}
+
+# Bar tipis bergradasi; merah kalau persentasenya tinggi
+function New-GlowshBar([double]$Pct, [int]$Cells, $Pal) {
+    $e = [char]27
+    $seg = [string][char]0x2501
+    $fill = [int][Math]::Round([Math]::Max(0, [Math]::Min(100, $Pct)) / 100 * $Cells)
+    $sb = New-Object System.Text.StringBuilder
+    for ($i = 0; $i -lt $Cells; $i++) {
+        if ($i -lt $fill) {
+            if ($Pct -ge 85) { $c = $Pal.err }
+            else {
+                $t = if ($Cells -gt 1) { $i / ($Cells - 1) } else { 0 }
+                $c = @(0, 1, 2 | ForEach-Object { [int]($Pal.P1[$_] + ($Pal.P2[$_] - $Pal.P1[$_]) * $t) }) -join ';'
+            }
+            [void]$sb.Append("$e[38;2;${c}m$seg")
+        } else { [void]$sb.Append("$e[2;38;2;$($Pal.cm)m$seg$e[22m") }
+    }
+    [void]$sb.Append("$e[0m")
+    return $sb.ToString()
+}
+
+# Jumlah perintah hari ini & streak, dari 256 KB terakhir stats.log (cepat walau file-nya besar)
+function Get-GlowshTodayStats {
+    $f = Join-Path $HOME '.glowsh\stats.log'
+    $res = @{ Today = 0; Streak = 0 }
+    if (-not (Test-Path $f)) { return $res }
+    $fs = [IO.File]::Open($f, 'Open', 'Read', 'ReadWrite')
+    try {
+        $take = [int][Math]::Min($fs.Length, 262144)
+        [void]$fs.Seek(-$take, 'End')
+        $buf = New-Object byte[] $take
+        [void]$fs.Read($buf, 0, $take)
+    } finally { $fs.Dispose() }
+    $today = (Get-Date).ToString('yyyy-MM-dd')
+    $days = New-Object 'System.Collections.Generic.HashSet[string]'
+    foreach ($l in ([Text.Encoding]::UTF8.GetString($buf) -split "`n")) {
+        if ($l.Length -lt 12 -or $l[4] -ne '-' -or $l.Contains("`t__")) { continue }
+        $d = $l.Substring(0, 10)
+        [void]$days.Add($d)
+        if ($d -eq $today) { $res.Today++ }
+    }
+    $dt = Get-Date
+    if (-not $days.Contains($today)) { $dt = $dt.AddDays(-1) }
+    while ($days.Contains($dt.ToString('yyyy-MM-dd'))) { $res.Streak++; $dt = $dt.AddDays(-1) }
+    return $res
+}
+
+function Get-GlowshSysPanel($Pal, [string]$Icon) {
+    $e = [char]27; $r = "$e[0m"; $m = "$e[38;2;$($Pal.cm)m"
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lbl = { param($t) $m + $t.PadRight(9) + $r }
+    $os = $null
+    try { $os = Get-CimInstance Win32_OperatingSystem -Property Caption, FreePhysicalMemory, TotalVisibleMemorySize, LastBootUpTime -ErrorAction Stop } catch {}
+    if ($os) {
+        $lines.Add("$e[1m" + ([string]$os.Caption -replace '^Microsoft\s+', '').Trim() + $r)
+        $ram = 100 * (1 - [double]$os.FreePhysicalMemory / [double]$os.TotalVisibleMemorySize)
+        $lines.Add((& $lbl 'RAM') + (New-GlowshBar $ram 12 $Pal) + ('{0,5}' -f ("$([int]$ram)%")))
+    }
+    try {
+        $dv = New-Object IO.DriveInfo ($env:SystemDrive)
+        $used = 100 * (1 - [double]$dv.AvailableFreeSpace / [double]$dv.TotalSize)
+        $lines.Add((& $lbl ('Disk ' + $env:SystemDrive.TrimEnd(':'))) + (New-GlowshBar $used 12 $Pal) + ('{0,5}' -f ("$([int]$used)%")))
+    } catch {}
+    if ($os) {
+        $up = (Get-Date) - $os.LastBootUpTime
+        $upText = if ($up.Days -gt 0) { Get-GlowshText "$($up.Days) hari $($up.Hours) jam" "$($up.Days)d $($up.Hours)h" } else { Get-GlowshText "$($up.Hours) jam $($up.Minutes) mnt" "$($up.Hours)h $($up.Minutes)m" }
+        $lines.Add((& $lbl (Get-GlowshText 'Nyala' 'Uptime')) + $upText)
+    }
+    try {
+        $st = Get-GlowshTodayStats
+        $lines.Add((& $lbl (Get-GlowshText 'Hari ini' 'Today')) + "$e[38;2;$($Pal.c1)m$($st.Today)$r " + (Get-GlowshText 'perintah' 'commands') +
+            $(if ($st.Streak -gt 0) { "  $m" + (Get-GlowshText "streak $($st.Streak) hari" "$($st.Streak)-day streak") + $r } else { '' }))
+    } catch {}
+    return New-GlowshBox ($Icon + (Get-GlowshText 'sistem' 'system')) $lines.ToArray() $Pal
+}
+
+# Kalender masehi + gambar fase bulan di sampingnya + tanggal hijriah di bawahnya
+function Get-GlowshCalendarPanel($Pal, $Culture, [string]$Icon, [datetime]$Now, [bool]$Moon = $true, [int]$HijriOffset = 0, [bool]$AfterMaghrib = $false) {
+    $e = [char]27; $r = "$e[0m"
+    $grid = @(Get-GlowshMonthGrid $Pal $Now)
+    $lines = New-Object System.Collections.Generic.List[string]
+    $mi = Get-GlowshMoon $Now
+    if ($Moon) {
+        $art = @(Get-GlowshMoonArt $mi $Pal 16)
+        for ($i = 0; $i -lt [Math]::Max($grid.Count, $art.Count); $i++) {
+            $left = if ($i -lt $grid.Count) { $grid[$i] } else { '' }
+            $right = if ($i -lt $art.Count) { $art[$i] } else { '' }
+            $lines.Add((Format-GlowshPad $left 20) + '   ' + $right)
+        }
+    } else { foreach ($g in $grid) { $lines.Add($g) } }
+    # Hari dalam kalender hijriah dimulai saat Maghrib
+    $hDate = $Now.Date.AddDays($HijriOffset + $(if ($AfterMaghrib) { 1 } else { 0 }))
+    $lines.Add("$e[38;2;$($Pal.c2)m" + (Get-GlowshHijriText $hDate) + $r)
+    $lines.Add("$e[38;2;$($Pal.cm)m" + $mi.Name + ' ' + [char]0x00B7 + ' ' + [int][Math]::Round($mi.Illum * 100) + '% ' + [char]0x00B7 + ' ' +
+        (Get-GlowshText ('hari ke-' + ([int][Math]::Floor($mi.Age) + 1)) ('day ' + ([int][Math]::Floor($mi.Age) + 1))) + $r)
+    $title = $Icon + $Culture.DateTimeFormat.GetMonthName($Now.Month) + ' ' + $Now.Year
+    return New-GlowshBox $title $lines.ToArray() $Pal 20
+}
+
+function Get-GlowshMonthGrid($Pal, [datetime]$Now) {
+    $e = [char]27; $r = "$e[0m"
+    $first = New-Object DateTime ($Now.Year, $Now.Month, 1)
+    $offset = ([int]$first.DayOfWeek + 6) % 7          # minggu dimulai hari Senin
+    $daysIn = [DateTime]::DaysInMonth($Now.Year, $Now.Month)
+    $names = if ($GlowshLang -eq 'en') { @('Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su') } else { @('Sn', 'Sl', 'Rb', 'Km', 'Jm', 'Sb', 'Mg') }
+    $holidays = @('1-1', '5-1', '6-1', '8-17', '12-25')   # libur nasional bertanggal tetap
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add("$e[38;2;$($Pal.cm)m" + ($names[0..5] -join ' ') + " $e[38;2;$($Pal.err)m" + $names[6] + $r)
+    $row = '   ' * $offset
+    for ($d = 1; $d -le $daysIn; $d++) {
+        $wd = ($offset + $d - 1) % 7
+        $txt = '{0,2}' -f $d
+        if ($d -eq $Now.Day) { $cell = "$e[1;38;2;$($Pal.bg);48;2;$($Pal.c1)m$txt$r" }
+        elseif ($wd -eq 6 -or $holidays -contains "$($Now.Month)-$d") { $cell = "$e[38;2;$($Pal.err)m$txt$r" }
+        else { $cell = $txt }
+        $row += $cell
+        if ($wd -eq 6 -or $d -eq $daysIn) { $lines.Add($row); $row = '' } else { $row += ' ' }
+    }
+    return $lines.ToArray()
+}
+
+function Get-GlowshQuotePanel($Pal, $Quote, [string]$Icon, [int]$Width = 40) {
+    $e = [char]27; $r = "$e[0m"
+    $lines = New-Object System.Collections.Generic.List[string]
+    $wrapped = @(Split-GlowshWrap ('"' + $Quote.Text + '"') $Width)
+    foreach ($w in $wrapped) { $lines.Add("$e[3m$w$r") }
+    $src = '- ' + $Quote.Source
+    $lines.Add((' ' * [Math]::Max(0, $Width - $src.Length)) + "$e[38;2;$($Pal.c1)m$src$r")
+    $label = Get-GlowshText $GlowshQuoteLabels[$Quote.Kind][0] $GlowshQuoteLabels[$Quote.Kind][1]
+    return New-GlowshBox ($Icon + 'quote ' + [char]0x00B7 + ' ' + $label) $lines.ToArray() $Pal $Width
+}
+
+# ---------- waktu sholat (parameter Kemenag RI), kalender hijriah, fase bulan
+# Rumus astronomi dari PrayTimes.org (Hamid Zarrabi-Zadeh). Semua dihitung lokal, tanpa internet.
+function Get-GlowshPrayerTimes([double]$Lat, [double]$Lon, [datetime]$Date) {
+    $rad = [Math]::PI / 180.0
+    $fixA = { param($v) $v - 360.0 * [Math]::Floor($v / 360.0) }
+    $fixH = { param($v) $v - 24.0 * [Math]::Floor($v / 24.0) }
+    $yy = $Date.Year; $mm = $Date.Month; $dd = $Date.Day
+    if ($mm -le 2) { $yy -= 1; $mm += 12 }
+    $ca = [Math]::Floor($yy / 100.0); $cb = 2 - $ca + [Math]::Floor($ca / 4.0)
+    $jd = [Math]::Floor(365.25 * ($yy + 4716)) + [Math]::Floor(30.6001 * ($mm + 1)) + $dd + $cb - 1524.5 - $Lon / (15.0 * 24.0)
+    $sun = { param($j)
+        $n = $j - 2451545.0
+        $g = & $fixA (357.529 + 0.98560028 * $n)
+        $q = & $fixA (280.459 + 0.98564736 * $n)
+        $lam = & $fixA ($q + 1.915 * [Math]::Sin($g * $rad) + 0.020 * [Math]::Sin(2 * $g * $rad))
+        $obl = 23.439 - 0.00000036 * $n
+        $ra = ([Math]::Atan2([Math]::Cos($obl * $rad) * [Math]::Sin($lam * $rad), [Math]::Cos($lam * $rad)) / $rad) / 15.0
+        @{ Eqt = $q / 15.0 - (& $fixH $ra); Decl = [Math]::Asin([Math]::Sin($obl * $rad) * [Math]::Sin($lam * $rad)) / $rad }
+    }
+    $mid = { param($frac) & $fixH (12.0 - (& $sun ($jd + $frac)).Eqt) }
+    $angleTime = { param($angle, $frac, $ccw)
+        $s = & $sun ($jd + $frac)
+        $noon = & $mid $frac
+        $cosv = (-[Math]::Sin($angle * $rad) - [Math]::Sin($s.Decl * $rad) * [Math]::Sin($Lat * $rad)) / ([Math]::Cos($s.Decl * $rad) * [Math]::Cos($Lat * $rad))
+        $span = ([Math]::Acos([Math]::Max(-1.0, [Math]::Min(1.0, $cosv))) / $rad) / 15.0
+        if ($ccw) { $noon - $span } else { $noon + $span }
+    }
+    $asr = { param($factor, $frac)
+        $s = & $sun ($jd + $frac)
+        $angle = -([Math]::Atan(1.0 / ($factor + [Math]::Tan([Math]::Abs($Lat - $s.Decl) * $rad))) / $rad)
+        & $angleTime $angle $frac $false
+    }
+    $adj = ([TimeZoneInfo]::Local.GetUtcOffset($Date.Date.AddHours(12))).TotalHours - $Lon / 15.0
+    # Jam desimal -> waktu lokal, + ihtiyath, dibulatkan ke atas ke menit penuh (seperti jadwal Kemenag)
+    $at = { param($hrs, $extra)
+        $x = $Date.Date.AddHours($hrs + $adj).AddMinutes($extra)
+        if ($x.Second -gt 0 -or $x.Millisecond -gt 0) { $x = $x.AddMilliseconds(-$x.Millisecond).AddSeconds(60 - $x.Second) }
+        $x
+    }
+    $subuh = & $at (& $angleTime 20.0 (5 / 24.0) $true) 2
+    return @(
+        @{ Key = 'imsak';   Id = 'Imsak';   En = 'Imsak';   Main = $false; Time = $subuh.AddMinutes(-10) },
+        @{ Key = 'subuh';   Id = 'Subuh';   En = 'Fajr';    Main = $true;  Time = $subuh },
+        @{ Key = 'terbit';  Id = 'Terbit';  En = 'Sunrise'; Main = $false; Time = (& $at (& $angleTime 0.833 (6 / 24.0) $true) 0) },
+        @{ Key = 'dzuhur';  Id = 'Dzuhur';  En = 'Dhuhr';   Main = $true;  Time = (& $at (& $mid (12 / 24.0)) 2) },
+        @{ Key = 'ashar';   Id = 'Ashar';   En = 'Asr';     Main = $true;  Time = (& $at (& $asr 1.0 (13 / 24.0)) 2) },
+        @{ Key = 'maghrib'; Id = 'Maghrib'; En = 'Maghrib'; Main = $true;  Time = (& $at (& $angleTime 0.833 (18 / 24.0) $false) 2) },
+        @{ Key = 'isya';    Id = 'Isya';    En = 'Isha';    Main = $true;  Time = (& $at (& $angleTime 18.0 (18 / 24.0) $false) 2) }
+    )
+}
+
+function Format-GlowshCountdown([TimeSpan]$T) {
+    if ($T.TotalHours -ge 1) { return Get-GlowshText ("{0}j {1}m" -f [int][Math]::Floor($T.TotalHours), $T.Minutes) ("{0}h {1}m" -f [int][Math]::Floor($T.TotalHours), $T.Minutes) }
+    return Get-GlowshText ("{0} mnt" -f [int][Math]::Ceiling($T.TotalMinutes)) ("{0} min" -f [int][Math]::Ceiling($T.TotalMinutes))
+}
+
+function Get-GlowshPrayerPanel($Pal, $Loc, [string]$Icon, [datetime]$Now) {
+    $e = [char]27; $r = "$e[0m"; $m = "$e[38;2;$($Pal.cm)m"
+    $lines = New-Object System.Collections.Generic.List[string]
+    if (-not $Loc -or $null -eq $Loc.lat) {
+        $lines.Add((Get-GlowshText 'Atur lokasi dulu:' 'Set your location first:'))
+        $lines.Add("$e[38;2;$($Pal.c1)mglowsh lokasi Jakarta$r")
+        return New-GlowshBox ($Icon + (Get-GlowshText 'sholat' 'prayer')) $lines.ToArray() $Pal
+    }
+    $times = Get-GlowshPrayerTimes ([double]$Loc.lat) ([double]$Loc.lon) $Now
+    $next = $times | Where-Object { $_.Main -and $_.Time -gt $Now } | Select-Object -First 1
+    foreach ($t in $times) {
+        $name = (Get-GlowshText $t.Id $t.En).PadRight(8) + $t.Time.ToString('HH:mm')
+        if ($next -and $t.Key -eq $next.Key) {
+            $lines.Add("$e[1;38;2;$($Pal.c1)m$name$r  $e[38;2;$($Pal.c2)m" + (Get-GlowshText 'lagi ' 'in ') + (Format-GlowshCountdown ($t.Time - $Now)) + $r)
+        } elseif (-not $t.Main -or $t.Time -le $Now) { $lines.Add("$m$name$r") }
+        else { $lines.Add($name) }
+    }
+    if (-not $next) {
+        $tomorrow = (Get-GlowshPrayerTimes ([double]$Loc.lat) ([double]$Loc.lon) $Now.AddDays(1)) | Where-Object { $_.Key -eq 'subuh' }
+        $lines.Add("$e[1;38;2;$($Pal.c1)m" + (Get-GlowshText 'Subuh besok ' 'Fajr tomorrow ') + $tomorrow.Time.ToString('HH:mm') + $r)
+    }
+    return New-GlowshBox ($Icon + (Get-GlowshText 'sholat' 'prayer') + ' ' + [char]0x00B7 + ' ' + [string]$Loc.name) $lines.ToArray() $Pal
+}
+
+function Get-GlowshHijriText([datetime]$Date) {
+    $names = if ($GlowshLang -eq 'en') {
+        @('Muharram', 'Safar', 'Rabi al-Awwal', 'Rabi al-Thani', 'Jumada al-Ula', 'Jumada al-Akhirah', 'Rajab', 'Shaban', 'Ramadan', 'Shawwal', 'Dhu al-Qadah', 'Dhu al-Hijjah')
+    } else {
+        @('Muharram', 'Safar', 'Rabiul Awal', 'Rabiul Akhir', 'Jumadil Awal', 'Jumadil Akhir', 'Rajab', 'Sya''ban', 'Ramadan', 'Syawal', 'Dzulqa''dah', 'Dzulhijjah')
+    }
+    $cal = New-Object Globalization.UmAlQuraCalendar
+    return '{0} {1} {2} H' -f $cal.GetDayOfMonth($Date), $names[$cal.GetMonth($Date) - 1], $cal.GetYear($Date)
+}
+
+# Umur bulan dihitung dari bulan baru acuan (6 Jan 2000 18:14 UTC), siklus sinodis 29,53 hari
+function Get-GlowshMoon([datetime]$Now) {
+    $synodic = 29.530588853
+    $ref = New-Object DateTime (2000, 1, 6, 18, 14, 0, [DateTimeKind]::Utc)
+    $age = (($Now.ToUniversalTime() - $ref).TotalDays) % $synodic
+    if ($age -lt 0) { $age += $synodic }
+    $theta = 2 * [Math]::PI * $age / $synodic
+    $idx = [int][Math]::Floor($age / $synodic * 8 + 0.5) % 8
+    $names = @(@('Bulan baru', 'New moon'), @('Sabit awal', 'Waxing crescent'), @('Separuh awal', 'First quarter'), @('Cembung awal', 'Waxing gibbous'),
+               @('Purnama', 'Full moon'), @('Cembung akhir', 'Waning gibbous'), @('Separuh akhir', 'Last quarter'), @('Sabit akhir', 'Waning crescent'))
+    return @{ Age = $age; Theta = $theta; Illum = (1 - [Math]::Cos($theta)) / 2; Waxing = ($age -lt $synodic / 2); Name = (Get-GlowshText $names[$idx][0] $names[$idx][1]) }
+}
+
+# Gambar bulan dengan setengah-blok: tiap karakter = 2 piksel (atas & bawah), jadi lingkarannya halus
+function Get-GlowshMoonArt($Moon, $Pal, [int]$Size = 16) {
+    $e = [char]27
+    $half = $Size / 2.0
+    $k = [Math]::Cos($Moon.Theta)
+    $bg = @($Pal.bg -split ';' | ForEach-Object { [int]$_ }); $mu = @($Pal.cm -split ';' | ForEach-Object { [int]$_ })
+    $dark = @(0, 1, 2 | ForEach-Object { [int]($bg[$_] + ($mu[$_] - $bg[$_]) * 0.35) }) -join ';'
+    $light = @(255, 246, 214); $shade = @(206, 192, 150)
+    $pixel = { param($px, $py)
+        $nx = ($px + 0.5 - $half) / $half; $ny = ($py + 0.5 - $half) / $half
+        $d2 = $nx * $nx + $ny * $ny
+        if ($d2 -gt 1.0) { return $null }
+        $w = [Math]::Sqrt([Math]::Max(0.0, 1.0 - $ny * $ny))
+        $lit = if ($Moon.Waxing) { $nx -ge $k * $w } else { $nx -le -$k * $w }
+        if (-not $lit) { return $dark }
+        $t = [Math]::Sqrt($d2)    # makin ke tepi makin redup: efek bola 3D
+        return (@(0, 1, 2 | ForEach-Object { [int]($light[$_] + ($shade[$_] - $light[$_]) * $t) }) -join ';')
+    }
+    $rows = New-Object System.Collections.Generic.List[string]
+    for ($ry = 0; $ry -lt $Size / 2; $ry++) {
+        $sb = New-Object System.Text.StringBuilder
+        for ($cx = 0; $cx -lt $Size; $cx++) {
+            $top = & $pixel $cx (2 * $ry); $bot = & $pixel $cx (2 * $ry + 1)
+            if ($top -and $bot) { [void]$sb.Append("$e[38;2;${top};48;2;${bot}m" + [char]0x2580 + "$e[0m") }
+            elseif ($top) { [void]$sb.Append("$e[38;2;${top}m" + [char]0x2580 + "$e[0m") }
+            elseif ($bot) { [void]$sb.Append("$e[38;2;${bot}m" + [char]0x2584 + "$e[0m") }
+            else { [void]$sb.Append(' ') }
+        }
+        $rows.Add($sb.ToString())
+    }
+    return $rows.ToArray()
+}
+
+# ---------- folder terakhir (untuk panel & glowsh go)
+function Get-GlowshRecentDirs([int]$Max = 5) {
+    $f = Join-Path $HOME '.glowsh\recent.txt'
+    if (-not (Test-Path $f)) { return @() }
+    return @([IO.File]::ReadAllLines($f) | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) } | Select-Object -First $Max)
+}
+
+function Add-GlowshRecentDir([string]$Dir) {
+    if (-not $Dir -or $Dir.TrimEnd('\') -eq $HOME.TrimEnd('\')) { return }
+    $f = Join-Path $HOME '.glowsh\recent.txt'
+    $old = if (Test-Path $f) { @([IO.File]::ReadAllLines($f)) } else { @() }
+    $new = @($Dir) + @($old | Where-Object { $_ -and $_ -ne $Dir }) | Select-Object -First 15
+    try { [IO.File]::WriteAllLines($f, [string[]]$new) } catch {}
+}
+
+function Get-GlowshShortPath([string]$P, [int]$Max = 24) {
+    $s = $P
+    if ($s.StartsWith($HOME, [StringComparison]::OrdinalIgnoreCase)) { $s = '~' + $s.Substring($HOME.Length) }
+    if ($s.Length -gt $Max) { $s = '..' + $s.Substring($s.Length - ($Max - 2)) }
+    return $s
+}
+
+function Get-GlowshGitBranch([string]$Dir) {
+    $h = Join-Path $Dir '.git\HEAD'
+    if (-not (Test-Path -LiteralPath $h -PathType Leaf)) { return $null }
+    $c = ([IO.File]::ReadAllText($h)).Trim()
+    if ($c -match '^ref: refs/heads/(.+)$') { return $Matches[1] }
+    if ($c.Length -ge 7) { return $c.Substring(0, 7) }
+    return $null
+}
+
+function Get-GlowshRecentPanel($Pal, [string]$Icon) {
+    $e = [char]27; $r = "$e[0m"
+    $dirs = @(Get-GlowshRecentDirs 4)
+    if ($dirs.Count -eq 0) { return $null }
+    $lines = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $dirs.Count; $i++) {
+        $br = Get-GlowshGitBranch $dirs[$i]
+        $lines.Add("$e[38;2;$($Pal.c1)m$($i + 1)$r  " + (Get-GlowshShortPath $dirs[$i] 22).PadRight(22) + $(if ($br) { "  $e[38;2;$($Pal.c2)m$br$r" } else { '' }))
+    }
+    $lines.Add("$e[38;2;$($Pal.cm)m" + (Get-GlowshText 'lompat: glowsh go 1' 'jump: glowsh go 1') + $r)
+    return New-GlowshBox ($Icon + (Get-GlowshText 'terakhir dibuka' 'recent')) $lines.ToArray() $Pal
+}
+
+# Susun blok-blok (logo, info, panel) mengalir ke kanan; pindah baris kalau tidak muat
+function Write-GlowshLayout($Blocks, [int]$Width, [int]$Margin = 2, [int]$Gap = 4) {
+    $rows = New-Object System.Collections.ArrayList
+    $cur = New-Object System.Collections.ArrayList
+    $x = $Margin
+    foreach ($blk in $Blocks) {
+        $need = if ($cur.Count) { $Gap + $blk.W } else { $blk.W }
+        if ($cur.Count -and ($x + $need) -gt $Width) { [void]$rows.Add($cur.ToArray()); $cur.Clear(); $x = $Margin; $need = $blk.W }
+        [void]$cur.Add($blk); $x += $need
+    }
+    if ($cur.Count) { [void]$rows.Add($cur.ToArray()) }
+    for ($ri = 0; $ri -lt $rows.Count; $ri++) {
+        $row = $rows[$ri]
+        if ($ri -gt 0) { Write-Host '' }
+        $hgt = 0
+        foreach ($blk in $row) { $hgt = [Math]::Max($hgt, @($blk.Lines).Count) }
+        for ($i = 0; $i -lt $hgt; $i++) {
+            $line = ' ' * $Margin
+            for ($j = 0; $j -lt $row.Count; $j++) {
+                $blk = $row[$j]
+                $cnt = @($blk.Lines).Count
+                $off = if ($blk.Center) { [int][Math]::Floor(($hgt - $cnt) / 2) } else { 0 }
+                $k = $i - $off
+                $cell = if ($k -ge 0 -and $k -lt $cnt) { @($blk.Lines)[$k] } else { '' }
+                if ($j -lt $row.Count - 1) { $line += (Format-GlowshPad $cell $blk.W) + (' ' * $Gap) } else { $line += $cell }
+            }
+            Write-Host $line.TrimEnd()
+        }
+    }
 }
 
 function Format-GlowshDuration([TimeSpan]$T) {
@@ -469,6 +934,13 @@ function Invoke-GlowshPromptHook([bool]$Ok = $true, $ExitCode = $null) {
             }
         }
     }
+    # Catat folder yang dikunjungi untuk panel "terakhir dibuka" & glowsh go
+    if (Get-GlowshSetting 'recent' $true) {
+        try {
+            $loc = $ExecutionContext.SessionState.Path.CurrentFileSystemLocation.ProviderPath
+            if ($loc -and $loc -ne $global:__glowshLastDir) { $global:__glowshLastDir = $loc; Add-GlowshRecentDir $loc }
+        } catch {}
+    }
     if ((Get-Date) -ge $global:__glowshNextSync) {
         $global:__glowshNextSync = (Get-Date).AddMinutes(5)
         Sync-GlowshTheme
@@ -667,13 +1139,18 @@ if (Get-GlowshSetting 'greet' $true) {
                      else { Get-GlowshText 'Selamat malam' 'Good evening' }
         $__grCulture = [Globalization.CultureInfo]::GetCultureInfo($(if ($GlowshLang -eq 'en') { 'en-US' } else { 'id-ID' }))
 
-        # Warna dari tema aktif (ditulis glowsh saat ganti tema): aksen1;aksen2;redup;nama tema
-        $__grAcc = @('#FF2E88', '#00F0FF', '#8A87B8', '')
-        try { $__grF = ([IO.File]::ReadAllText((Join-Path $GlowshHome 'accent.txt'))).Trim() -split ';'; if ($__grF.Count -ge 4) { $__grAcc = $__grF } } catch {}
+        # Warna dari tema aktif (ditulis glowsh saat ganti tema): aksen1;aksen2;redup;nama tema;merah;latar
+        $__grAcc = @('#FF2E88', '#00F0FF', '#8A87B8', '', '#FF5F7E', '#101018')
+        try {
+            $__grF = @(([IO.File]::ReadAllText((Join-Path $GlowshHome 'accent.txt'))).Trim() -split ';')
+            for ($__grI = 0; $__grI -lt [Math]::Min($__grF.Count, 6); $__grI++) { if ($__grF[$__grI] -or $__grI -eq 3) { $__grAcc[$__grI] = $__grF[$__grI] } }
+        } catch {}
         $__grE = [char]27
-        $__grRgb = { param($hex) $x = $hex.TrimStart('#'); @([Convert]::ToInt32($x.Substring(0, 2), 16), [Convert]::ToInt32($x.Substring(2, 2), 16), [Convert]::ToInt32($x.Substring(4, 2), 16)) }
-        $__grP1 = & $__grRgb $__grAcc[0]; $__grP2 = & $__grRgb $__grAcc[1]; $__grPm = & $__grRgb $__grAcc[2]
-        $__grC1 = $__grP1 -join ';'; $__grC2 = $__grP2 -join ';'; $__grCm = $__grPm -join ';'
+        $__grPal = ConvertTo-GlowshPal $__grAcc[0] $__grAcc[1] $__grAcc[2] $__grAcc[4] $__grAcc[5]
+        $__grP1 = $__grPal.P1; $__grP2 = $__grPal.P2
+        $__grC1 = $__grPal.c1; $__grC2 = $__grPal.c2; $__grCm = $__grPal.cm
+        # Ikon Nerd Font hanya di terminal modern (di jendela klasik jadi kotak)
+        $__grIc = { param($code) if ($env:WT_SESSION -or $env:TERM_PROGRAM) { [string][char]$code + ' ' } else { '' } }
 
         $__grIcon = ''
         if ($env:WT_SESSION) { $__grIcon = [string][char]$(if ($__grH -ge 6 -and $__grH -lt 18) { 0xF185 } else { 0xF186 }) + ' ' }
@@ -704,6 +1181,7 @@ if (Get-GlowshSetting 'greet' $true) {
         $__grWidth = 80
         try { $__grWidth = $Host.UI.RawUI.WindowSize.Width } catch {}
         Write-Host ''
+        $__grLogo = $null
         if ((Get-GlowshSetting 'logo' $true) -and $__grWidth -ge 58) {
             # Logo GLOWSH dari huruf blok. Disimpan sebagai kode ASCII (file ini harus ASCII-only),
             # diubah ke karakter aslinya di sini: # = blok penuh, q w e z = sudut, v = garis tegak, = = garis datar
@@ -729,20 +1207,38 @@ if (Get-GlowshSetting 'greet' $true) {
                 [void]$__grSb.Append("$__grE[0m")
                 $__grSb.ToString()
             }
-            if ($__grWidth -ge 100) {
-                # Jendela lebar: info di samping logo, rata tengah
-                $__grOff = [Math]::Max(0, [int][Math]::Floor((6 - $__grLines.Count) / 2))
-                for ($__grI = 0; $__grI -lt 6; $__grI++) {
-                    $__grK = $__grI - $__grOff
-                    $__grRight = if ($__grK -ge 0 -and $__grK -lt $__grLines.Count) { '    ' + $__grLines[$__grK] } else { '' }
-                    Write-Host ('  ' + $__grLogo[$__grI] + $__grRight)
-                }
-                for ($__grK = 6 - $__grOff; $__grK -lt $__grLines.Count; $__grK++) { Write-Host ((' ' * 58) + $__grLines[$__grK]) }
-            } else {
-                foreach ($__grL in $__grLogo) { Write-Host ('  ' + $__grL) }
-                Write-Host ''
-                foreach ($__grL in $__grLines) { Write-Host ('  ' + $__grL) }
+        }
+        if ($__grWidth -ge 58) {
+            # Blok-blok sapaan, disusun otomatis sesuai lebar jendela
+            $__grBlocks = New-Object System.Collections.ArrayList
+            if ($__grLogo) { [void]$__grBlocks.Add(@{ Lines = @($__grLogo); W = 52; Center = $false }) }
+            $__grInfoW = 0; foreach ($__grL in $__grLines) { $__grInfoW = [Math]::Max($__grInfoW, (Get-GlowshVisibleLength $__grL)) }
+            [void]$__grBlocks.Add(@{ Lines = @($__grLines); W = $__grInfoW; Center = $true })
+            $__grPanels = @()
+            if (Get-GlowshSetting 'sysinfo' $true) { try { $__grPanels += ,@(Get-GlowshSysPanel $__grPal (& $__grIc 0xF2DB)) } catch {} }
+            $__grLoc = Get-GlowshSetting 'location' $null
+            $__grAfterMaghrib = $false
+            if ($__grLoc -and $null -ne $__grLoc.lat) {
+                try {
+                    $__grMg = (Get-GlowshPrayerTimes ([double]$__grLoc.lat) ([double]$__grLoc.lon) $__grNow | Where-Object { $_.Key -eq 'maghrib' }).Time
+                    $__grAfterMaghrib = ($__grNow -ge $__grMg)
+                } catch {}
             }
+            if (Get-GlowshSetting 'sholat' $true) { try { $__grPanels += ,@(Get-GlowshPrayerPanel $__grPal $__grLoc (& $__grIc 0xF017) $__grNow) } catch {} }
+            if (Get-GlowshSetting 'calendar' $true) {
+                try {
+                    $__grPanels += ,@(Get-GlowshCalendarPanel $__grPal $__grCulture (& $__grIc 0xF073) $__grNow ([bool](Get-GlowshSetting 'moon' $true)) ([int](Get-GlowshSetting 'hijriOffset' 0)) $__grAfterMaghrib)
+                } catch {}
+            }
+            if (Get-GlowshSetting 'quote' $true) {
+                try {
+                    $__grQ = Get-GlowshQuote (Get-GlowshQuoteKinds (Get-GlowshSetting 'quoteKinds' $null))
+                    $__grPanels += ,@(Get-GlowshQuotePanel $__grPal $__grQ (& $__grIc 0xF10D) 40)
+                } catch {}
+            }
+            if (Get-GlowshSetting 'recent' $true) { try { $__grRp = Get-GlowshRecentPanel $__grPal (& $__grIc 0xF07C); if ($__grRp) { $__grPanels += ,@($__grRp) } } catch {} }
+            foreach ($__grPn in $__grPanels) { [void]$__grBlocks.Add(@{ Lines = $__grPn; W = (Get-GlowshVisibleLength $__grPn[0]); Center = $false }) }
+            Write-GlowshLayout $__grBlocks $__grWidth
         } else {
             # Versi ringkas (logo dimatikan atau jendela terlalu sempit)
             Write-Host ('  ' + $__grLines[0] + "$__grE[38;2;${__grCm}m   " + ((@($__grLines | Select-Object -Skip 1) | ForEach-Object { $_ -replace "$([char]27)\[[0-9;]*m", '' }) -join '  |  ') + "$__grE[0m")
@@ -758,7 +1254,10 @@ if (Get-GlowshSetting 'greet' $true) {
             @('matikan sapaan ini dengan "glowsh greet off"', 'turn this greeting off with "glowsh greet off"'),
             @('"glowsh wrapped" menampilkan rekap tahunan terminal kamu', '"glowsh wrapped" shows your year in the terminal'),
             @('error? ketik "glowsh why" untuk penjelasan & solusinya', 'got an error? type "glowsh why" for an explanation & fix'),
-            @('logo ini bisa dimatikan dengan "glowsh logo off"', 'turn this logo off with "glowsh logo off"')
+            @('logo ini bisa dimatikan dengan "glowsh logo off"', 'turn this logo off with "glowsh logo off"'),
+            @('"glowsh go 1" lompat ke folder yang terakhir kamu buka', '"glowsh go 1" jumps to the folder you opened last'),
+            @('"glowsh quote agama" menampilkan quote dari kategori tertentu', '"glowsh quote faith" shows a quote from one category'),
+            @('panel bisa dimatikan satu-satu: glowsh calendar off', 'turn panels off one by one: glowsh calendar off')
         )
         $__grTip = $__grTips[(Get-Random -Maximum $__grTips.Count)]
         Write-Host ''
@@ -1275,7 +1774,8 @@ function Add-GlowshUserPath {
 
 function Install-GlowshCommand {
     New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
-    $cmd = "@echo off`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%USERPROFILE%\.glowsh\glowsh.ps1`" %*`r`n"
+    # GLOWSH_FROM_CMD memberi tahu glowsh.ps1 bahwa ia dipanggil dari CMD (misalnya "glowsh go" tidak bisa pindah folder CMD)
+    $cmd = "@echo off`r`nsetlocal`r`nset GLOWSH_FROM_CMD=1`r`npowershell -NoProfile -ExecutionPolicy Bypass -File `"%USERPROFILE%\.glowsh\glowsh.ps1`" %*`r`nendlocal`r`n"
     [IO.File]::WriteAllText((Join-Path $BinDir 'glowsh.cmd'), $cmd, (New-Object Text.ASCIIEncoding))
     Add-GlowshUserPath
 }
@@ -1488,7 +1988,7 @@ function Set-GlowshTheme([string]$Id, [switch]$Explicit) {
     # Warna aksen untuk logo & sapaan di shell.ps1 (dibaca saat terminal dibuka, supaya startup tetap cepat)
     try {
         $acc = Get-ThemeAccents $t
-        Write-Utf8NoBom (Join-Path $GlowHome 'accent.txt') (@($acc.a1, $acc.a2, $acc.muted, $t.Title) -join ';')
+        Write-Utf8NoBom (Join-Path $GlowHome 'accent.txt') (@($acc.a1, $acc.a2, $acc.muted, $t.Title, $acc.err, $t.Scheme.background) -join ';')
     } catch {}
 
     if ($Explicit) {
@@ -2324,6 +2824,66 @@ function Submit-GlowshTheme([string]$Id) {
     try { Start-Process $url } catch { Write-Host "  $url" }
 }
 
+# ============================================================ lokasi & jadwal sholat
+# Kota-kota Indonesia (nama, lintang, bujur) supaya "glowsh lokasi <kota>" bekerja tanpa internet
+$GlowshCities = [ordered]@{
+    'jakarta' = @('Jakarta', -6.2088, 106.8456); 'bogor' = @('Bogor', -6.5971, 106.8060); 'depok' = @('Depok', -6.4025, 106.7942)
+    'tangerang' = @('Tangerang', -6.1783, 106.6319); 'bekasi' = @('Bekasi', -6.2383, 106.9756); 'serang' = @('Serang', -6.1200, 106.1503)
+    'bandung' = @('Bandung', -6.9175, 107.6191); 'cirebon' = @('Cirebon', -6.7063, 108.5570); 'tasikmalaya' = @('Tasikmalaya', -7.3274, 108.2207)
+    'sukabumi' = @('Sukabumi', -6.9277, 106.9300); 'karawang' = @('Karawang', -6.3227, 107.3376); 'purwakarta' = @('Purwakarta', -6.5569, 107.4431)
+    'garut' = @('Garut', -7.2279, 107.9087); 'semarang' = @('Semarang', -6.9667, 110.4167); 'yogyakarta' = @('Yogyakarta', -7.7956, 110.3695)
+    'jogja' = @('Yogyakarta', -7.7956, 110.3695); 'solo' = @('Surakarta', -7.5755, 110.8243); 'surakarta' = @('Surakarta', -7.5755, 110.8243)
+    'magelang' = @('Magelang', -7.4797, 110.2177); 'purwokerto' = @('Purwokerto', -7.4245, 109.2302); 'tegal' = @('Tegal', -6.8694, 109.1402)
+    'pekalongan' = @('Pekalongan', -6.8886, 109.6753); 'kudus' = @('Kudus', -6.8048, 110.8405); 'surabaya' = @('Surabaya', -7.2575, 112.7521)
+    'sidoarjo' = @('Sidoarjo', -7.4478, 112.7183); 'gresik' = @('Gresik', -7.1566, 112.6555); 'malang' = @('Malang', -7.9666, 112.6326)
+    'kediri' = @('Kediri', -7.8480, 112.0178); 'madiun' = @('Madiun', -7.6298, 111.5239); 'jember' = @('Jember', -8.1845, 113.6681)
+    'probolinggo' = @('Probolinggo', -7.7543, 113.2159); 'banyuwangi' = @('Banyuwangi', -8.2192, 114.3691); 'denpasar' = @('Denpasar', -8.6705, 115.2126)
+    'mataram' = @('Mataram', -8.5833, 116.1167); 'kupang' = @('Kupang', -10.1772, 123.6070); 'banda aceh' = @('Banda Aceh', 5.5483, 95.3238)
+    'lhokseumawe' = @('Lhokseumawe', 5.1801, 97.1507); 'medan' = @('Medan', 3.5952, 98.6722); 'pematangsiantar' = @('Pematangsiantar', 2.9595, 99.0687)
+    'padang' = @('Padang', -0.9471, 100.4172); 'pekanbaru' = @('Pekanbaru', 0.5071, 101.4478); 'batam' = @('Batam', 1.0456, 104.0305)
+    'tanjung pinang' = @('Tanjung Pinang', 0.9186, 104.4553); 'jambi' = @('Jambi', -1.6101, 103.6131); 'palembang' = @('Palembang', -2.9761, 104.7754)
+    'bengkulu' = @('Bengkulu', -3.7928, 102.2608); 'bandar lampung' = @('Bandar Lampung', -5.3971, 105.2668); 'pangkal pinang' = @('Pangkal Pinang', -2.1291, 106.1090)
+    'pontianak' = @('Pontianak', -0.0263, 109.3425); 'palangka raya' = @('Palangka Raya', -2.2136, 113.9108); 'banjarmasin' = @('Banjarmasin', -3.3186, 114.5944)
+    'samarinda' = @('Samarinda', -0.5022, 117.1536); 'balikpapan' = @('Balikpapan', -1.2379, 116.8529); 'tarakan' = @('Tarakan', 3.3000, 117.6333)
+    'makassar' = @('Makassar', -5.1477, 119.4327); 'manado' = @('Manado', 1.4748, 124.8421); 'palu' = @('Palu', -0.8999, 119.8707)
+    'kendari' = @('Kendari', -3.9985, 122.5129); 'gorontalo' = @('Gorontalo', 0.5435, 123.0568); 'mamuju' = @('Mamuju', -2.6748, 118.8885)
+    'ambon' = @('Ambon', -3.6954, 128.1814); 'ternate' = @('Ternate', 0.7893, 127.3778); 'jayapura' = @('Jayapura', -2.5337, 140.7181)
+    'manokwari' = @('Manokwari', -0.8615, 134.0620); 'sorong' = @('Sorong', -0.8762, 131.2558); 'merauke' = @('Merauke', -8.4932, 140.4018)
+}
+
+function Find-GlowshCity([string]$Query) {
+    $q = $Query.Trim().ToLower() -replace '^kota\s+', ''
+    if ($GlowshCities.Contains($q)) { $c = $GlowshCities[$q] }
+    else {
+        $key = @($GlowshCities.Keys | Where-Object { $_ -like "$q*" -or $_.Replace(' ', '') -eq $q.Replace(' ', '') }) | Select-Object -First 1
+        $c = if ($key) { $GlowshCities[$key] } else { $null }
+    }
+    if (-not $c) { return $null }
+    return @{ Name = $c[0]; Lat = [double]$c[1]; Lon = [double]$c[2] }
+}
+
+function Get-GlowshThemePal {
+    $th = $GlowshThemes[(Get-GlowshCurrentTheme)]
+    $ac = Get-ThemeAccents $th
+    return ConvertTo-GlowshPal $ac.a1 $ac.a2 $ac.muted $ac.err $th.Scheme.background
+}
+
+function Show-GlowshPrayerToday {
+    $loc = Get-GlowshSettingValue 'location'
+    $pal = Get-GlowshThemePal
+    $now = Get-Date
+    $ic = if ($env:WT_SESSION -or $env:TERM_PROGRAM) { [string][char]0xF017 + ' ' } else { '' }
+    Enable-VirtualTerminal
+    Write-Host ''
+    foreach ($l in (Get-GlowshPrayerPanel $pal $loc $ic $now)) { Write-Host "  $l" }
+    $after = $false
+    if ($loc -and $null -ne $loc.lat) { $after = $now -ge ((Get-GlowshPrayerTimes ([double]$loc.lat) ([double]$loc.lon) $now) | Where-Object { $_.Key -eq 'maghrib' }).Time }
+    $hOff = [int](Get-GlowshSettingValue 'hijriOffset')
+    Write-Host ('  ' + (Get-GlowshHijriText ($now.Date.AddDays($hOff + $(if ($after) { 1 } else { 0 }))))) -ForegroundColor Cyan
+    Write-Host ('  ' + (L 'Metode Kemenag RI (Subuh 20 derajat, Isya 18 derajat, ihtiyath 2 menit). Selisih 1-2 menit dengan jadwal resmi itu wajar.' 'Indonesian Ministry of Religious Affairs method (Fajr 20 deg, Isha 18 deg, 2-minute safety margin). A 1-2 minute difference from official tables is normal.')) -ForegroundColor DarkGray
+    Write-Host ''
+}
+
 # ============================================================ bantuan & pengaturan
 function Show-GlowshHelp {
     $t = $GlowshThemes[(Get-GlowshCurrentTheme)]
@@ -2348,6 +2908,11 @@ function Show-GlowshHelp {
         @('glowsh doctor',             'cek & perbaiki masalah tampilan',      'diagnose & fix display problems'),
         @('glowsh settings',           'lihat & ubah fitur (on/off)',          'view & toggle features'),
         @("glowsh name <$nm>",         'ganti nama di prompt & sapaan',        'set the name in your prompt & greeting'),
+        @('glowsh quote [kategori]',   'quote acak: lucu, hidup, agama, diri', 'random quote: fun, life, faith, growth'),
+        @('glowsh go [nomor|nama]',    'lompat ke folder yang baru dibuka',    'jump to a recently visited folder'),
+        @('glowsh lokasi <kota>',      'atur lokasi untuk jadwal sholat',      'set your location for prayer times'),
+        @('glowsh sholat',             'jadwal sholat hari ini',               'today''s prayer times'),
+        @('glowsh hijri [+1|-1|0]',    'tanggal hijriah (+ koreksi)',          'Hijri date (+ correction)'),
         @('glowsh lang id|en',         'ganti bahasa',                         'switch language'),
         @('glowsh update',             'update Glowsh ke versi terbaru',       'update Glowsh to the latest version'),
         @('glowsh uninstall',          'kembalikan tampilan seperti semula',   'restore your terminal to how it was')
@@ -2468,6 +3033,120 @@ if (-not $GlowshAsLibrary -and $MyInvocation.InvocationName -ne '.') {
             }
         }
         'explain' { Show-GlowshExplain $Arguments }
+        'quote' {
+            if ($arg1 -in 'on', 'off') { }   # biarkan ditangani pengaturan on/off di bawah
+            elseif ($arg1 -in 'kinds', 'kategori') {
+                $sel = @((($Arguments | Select-Object -Skip 1) -join ',') -split '[,\s]+' | Where-Object { $_ } |
+                    ForEach-Object { $k = $_.ToLower(); if ($GlowshQuoteAlias.ContainsKey($k)) { $GlowshQuoteAlias[$k] } else { $k } })
+                if ($sel.Count -eq 0 -or $sel -contains 'all' -or $sel -contains 'semua') {
+                    Set-GlowshConfigValue 'quoteKinds' $null
+                    Write-Ok (L 'Quote dari semua kategori: lucu, hidup, agama, diri' 'Quotes from every category: fun, life, faith, growth')
+                } else {
+                    $valid = @($sel | Where-Object { $GlowshQuotes.Contains($_) } | Select-Object -Unique)
+                    if ($valid.Count -eq 0) { Write-Bad (L 'Kategori yang ada: lucu, hidup, agama, diri' 'Available categories: fun, life, faith, growth'); break }
+                    Set-GlowshConfigValue 'quoteKinds' $valid
+                    Write-Ok ((L 'Quote harian hanya dari: ' 'Daily quotes only from: ') + (($valid | ForEach-Object { L $GlowshQuoteLabels[$_][0] $GlowshQuoteLabels[$_][1] }) -join ', '))
+                }
+                break
+            } else {
+                $kind = ''
+                if ($arg1) {
+                    $kind = $arg1.ToLower()
+                    if ($GlowshQuoteAlias.ContainsKey($kind)) { $kind = $GlowshQuoteAlias[$kind] }
+                    if (-not $GlowshQuotes.Contains($kind)) { Write-Bad (L 'Kategori yang ada: lucu, hidup, agama, diri' 'Available categories: fun, life, faith, growth'); break }
+                }
+                $kinds = if ($kind) { @($kind) } else { Get-GlowshQuoteKinds (Get-GlowshSettingValue 'quoteKinds') }
+                $th = $GlowshThemes[(Get-GlowshCurrentTheme)]
+                $ac = Get-ThemeAccents $th
+                $pal = ConvertTo-GlowshPal $ac.a1 $ac.a2 $ac.muted $ac.err $th.Scheme.background
+                $ic = if ($env:WT_SESSION -or $env:TERM_PROGRAM) { [string][char]0xF10D + ' ' } else { '' }
+                Enable-VirtualTerminal
+                Write-Host ''
+                foreach ($l in (Get-GlowshQuotePanel $pal (Get-GlowshQuote $kinds -Random) $ic 46)) { Write-Host "  $l" }
+                Write-Host ''
+                Write-Host ('  ' + (L 'Lagi: glowsh quote   Kategori: glowsh quote lucu|hidup|agama|diri   Atur harian: glowsh quote kinds lucu,diri' 'Another: glowsh quote   Category: glowsh quote fun|life|faith|growth   Daily: glowsh quote kinds fun,growth')) -ForegroundColor DarkGray
+                Write-Host ''
+                break
+            }
+        }
+        { $_ -in 'lokasi', 'location' } {
+            if ($Arguments.Count -eq 0) {
+                $loc = Get-GlowshSettingValue 'location'
+                Write-Host ''
+                if ($loc -and $null -ne $loc.lat) { Write-Host ('  ' + (L 'Lokasi: ' 'Location: ')) -NoNewline; Write-Host "$($loc.name)  ($($loc.lat), $($loc.lon))" -ForegroundColor Cyan }
+                else { Write-Note (L 'Lokasi belum diatur.' 'No location set yet.') }
+                Write-Host ('  ' + (L 'Atur: glowsh lokasi Bandung   atau koordinat: glowsh lokasi -6.91 107.61 Rumah   Hapus: glowsh lokasi reset' 'Set: glowsh lokasi Bandung   or coordinates: glowsh lokasi -6.91 107.61 Home   Remove: glowsh lokasi reset')) -ForegroundColor DarkGray
+                Write-Host ''
+                break
+            }
+            if ($Arguments.Count -eq 1 -and $arg1 -in 'reset', 'hapus') { Set-GlowshConfigValue 'location' $null; Write-Ok (L 'Lokasi dihapus.' 'Location removed.'); break }
+            $inv = [Globalization.CultureInfo]::InvariantCulture
+            $lat = 0.0; $lon = 0.0; $name = $null
+            if ($Arguments.Count -ge 2 -and [double]::TryParse($Arguments[0], [Globalization.NumberStyles]::Float, $inv, [ref]$lat) -and [double]::TryParse($Arguments[1], [Globalization.NumberStyles]::Float, $inv, [ref]$lon)) {
+                $name = if ($Arguments.Count -gt 2) { ($Arguments | Select-Object -Skip 2) -join ' ' } else { ('{0}, {1}' -f $lat, $lon) }
+            } else {
+                $query = $Arguments -join ' '
+                $hit = Find-GlowshCity $query
+                if ($hit) { $name = $hit.Name; $lat = $hit.Lat; $lon = $hit.Lon }
+                else {
+                    Write-Note (L "'$query' tidak ada di daftar kota bawaan. Mencari lewat open-meteo.com (hanya nama kotanya yang dikirim)..." "'$query' is not in the built-in city list. Looking it up on open-meteo.com (only the city name is sent)...")
+                    $g = $null
+                    try { $g = @((Invoke-RestMethod -UseBasicParsing "https://geocoding-api.open-meteo.com/v1/search?name=$([uri]::EscapeDataString($query))&count=1&language=id&format=json").results)[0] } catch {}
+                    if (-not $g) { Write-Bad (L "Kota '$query' tidak ditemukan. Coba pakai koordinat: glowsh lokasi <lintang> <bujur> <nama>" "Could not find '$query'. Try coordinates: glowsh lokasi <lat> <lon> <name>"); break }
+                    $name = [string]$g.name; $lat = [double]$g.latitude; $lon = [double]$g.longitude
+                    if ($g.country) { Write-Host ('  ' + (L 'Ditemukan: ' 'Found: ') + "$name, $($g.admin1), $($g.country)") -ForegroundColor DarkGray }
+                }
+            }
+            if ([Math]::Abs($lat) -gt 66 -or [Math]::Abs($lon) -gt 180) { Write-Bad (L 'Koordinat tidak valid (lintang maks. 66, bujur maks. 180).' 'Invalid coordinates (max latitude 66, max longitude 180).'); break }
+            Set-GlowshConfigValue 'location' ([pscustomobject]@{ name = $name; lat = [Math]::Round($lat, 4); lon = [Math]::Round($lon, 4) })
+            Write-Ok ((L 'Lokasi diatur: ' 'Location set: ') + $name)
+            Show-GlowshPrayerToday
+        }
+        { $_ -in 'sholat', 'prayer' } {
+            if ($arg1 -in 'on', 'off') { }   # biarkan ditangani pengaturan on/off di bawah
+            else { Show-GlowshPrayerToday; break }
+        }
+        'hijri' {
+            $tmp = 0
+            if ($arg1 -match '^[+-]?\d$' -and [int]::TryParse($arg1.TrimStart('+'), [ref]$tmp) -and [Math]::Abs($tmp) -le 2) {
+                Set-GlowshConfigValue 'hijriOffset' $tmp
+                Write-Ok ((L 'Koreksi tanggal hijriah: ' 'Hijri date correction: ') + $tmp + (L ' hari' ' days'))
+            } elseif ($arg1) { Write-Bad (L 'Pakai: glowsh hijri +1 / -1 / 0' 'Usage: glowsh hijri +1 / -1 / 0'); break }
+            $hOff = [int](Get-GlowshSettingValue 'hijriOffset')
+            Write-Host ''
+            Write-Host ('  ' + (Get-GlowshHijriText ((Get-Date).Date.AddDays($hOff)))) -ForegroundColor Cyan
+            Write-Host ('  ' + (L 'Dihitung dengan kalender Umm al-Qura. Kalau beda dengan penetapan di Indonesia, koreksi dengan: glowsh hijri +1 atau -1' 'Uses the Umm al-Qura calendar. If it differs from your local announcement, correct it with: glowsh hijri +1 or -1')) -ForegroundColor DarkGray
+            Write-Host ''
+        }
+        'go' {
+            $dirs = @(Get-GlowshRecentDirs 15)
+            if ($dirs.Count -eq 0) { Write-Note (L 'Belum ada folder yang tercatat. Buka beberapa folder dulu dengan cd.' 'No folders recorded yet. Visit a few folders with cd first.'); break }
+            if (-not $arg1) {
+                Write-Host ''
+                for ($i = 0; $i -lt $dirs.Count; $i++) {
+                    $br = Get-GlowshGitBranch $dirs[$i]
+                    Write-Host ('  {0,2}  ' -f ($i + 1)) -NoNewline -ForegroundColor Magenta
+                    Write-Host (Get-GlowshShortPath $dirs[$i] 60) -NoNewline
+                    if ($br) { Write-Host "  ($br)" -ForegroundColor Cyan } else { Write-Host '' }
+                }
+                Write-Host ''
+                Write-Host ('  ' + (L 'Lompat: glowsh go <nomor>   atau   glowsh go <sebagian nama folder>' 'Jump: glowsh go <number>   or   glowsh go <part of the folder name>')) -ForegroundColor DarkGray
+                Write-Host ''
+                break
+            }
+            $target = $null; $n = 0
+            if ([int]::TryParse($arg1, [ref]$n) -and $n -ge 1 -and $n -le $dirs.Count) { $target = $dirs[$n - 1] }
+            else { $target = $dirs | Where-Object { (Split-Path $_ -Leaf) -like "*$arg1*" } | Select-Object -First 1 }
+            if (-not $target) { $target = $dirs | Where-Object { $_ -like "*$arg1*" } | Select-Object -First 1 }
+            if (-not $target) { Write-Bad (L "Tidak ada folder terakhir yang cocok dengan '$arg1'." "No recent folder matches '$arg1'."); break }
+            if ($env:GLOWSH_FROM_CMD -eq '1') {
+                Write-Host (L '  Di CMD, jalankan:' '  In CMD, run:') -ForegroundColor DarkGray
+                Write-Host "  cd /d `"$target`"" -ForegroundColor Cyan
+            } else {
+                Set-Location -LiteralPath $target
+                Write-Ok $target
+            }
+        }
         'name' {
             $current = Get-GlowshDisplayName
             if ($Arguments.Count -eq 0) {

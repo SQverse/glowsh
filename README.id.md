@@ -96,11 +96,25 @@ Pengaman ini mencakup hapus rekursif, `format`, `diskpart`, `git reset --hard`, 
 
 Perintah yang berjalan 30 detik atau lebih akan memunculkan notifikasi Windows seperti *"✅ Perintah selesai: npm install (2m 14s)"*. Batasnya bisa diubah dengan `glowsh notify 60`.
 
-### 👋 Sapaan saat terminal dibuka
+### 👋 Dashboard sapaan
 
-```
-  ☀ Selamat sore, HP!   Sabtu, 21 November 2026  |  baterai 78%
-  Tip: "glowsh wallpaper" membuat tema dari wallpaper kamu
+Setiap terminal dibuka, muncul **logo GLOWSH** dari huruf blok dengan gradasi warna tema kamu, ditambah panel-panel yang tersusun otomatis mengikuti lebar jendela:
+
+- **Sistem**: versi Windows, bar RAM dan disk, lama laptop menyala, serta jumlah perintah dan streak hari ini
+- **Jadwal sholat** sesuai kotamu (metode Kemenag RI: Subuh 20°, Isya 18°, ihtiyath 2 menit), waktu sholat berikutnya disorot dengan hitung mundur, dihitung tanpa internet
+- **Kalender**: bulan ini, tanggal hari ini disorot, hari Minggu dan libur nasional bertanggal tetap berwarna merah, **tanggal hijriah** (berganti saat Maghrib), dan **gambar bulan** yang mengikuti fase bulan hari itu
+- **Quote harian** dengan 4 kategori: *lucu* (humor programmer), *hidup*, *agama*, dan *diri* (self development)
+- **Folder terakhir** lengkap dengan branch git-nya; lompat lagi dengan `glowsh go 1`
+
+```powershell
+glowsh lokasi Bandung         # kota untuk jadwal sholat (atau: glowsh lokasi -6.91 107.61 Rumah)
+glowsh sholat                 # jadwal sholat hari ini
+glowsh hijri +1               # koreksi tanggal hijriah kalau beda dengan penetapan di Indonesia
+glowsh name Abid              # nama di prompt & sapaan
+glowsh quote agama            # quote acak dari satu kategori
+glowsh quote kinds lucu,hidup # kategori yang dipakai quote harian
+glowsh go                     # daftar folder terakhir, lalu: glowsh go 2 / glowsh go web
+glowsh calendar off           # tiap panel bisa dimatikan: logo, sysinfo, calendar, quote, recent
 ```
 
 ### 🩺 Glowsh Doctor
@@ -160,7 +174,11 @@ Seluruh tampilan tersedia dalam **Bahasa Indonesia** dan **English**. Ganti kapa
 | `glowsh submit [nama]` | kirim tema ke galeri |
 | `glowsh doctor` | cek & perbaiki masalah tampilan |
 | `glowsh settings` | lihat semua fitur dan statusnya |
-| `glowsh <fitur> on\|off` | nyalakan/matikan `greet`, `auto`, `seasonal`, `notify`, `typo`, `guard`, `stats` |
+| `glowsh quote [kategori]` · `glowsh quote kinds <daftar>` | quote acak / pilih kategori quote harian |
+| `glowsh go [nomor\|nama]` | lompat ke folder yang baru dibuka |
+| `glowsh lokasi <kota>` · `glowsh sholat` | atur lokasi / lihat jadwal sholat hari ini |
+| `glowsh hijri [+1\|-1\|0]` | tanggal hijriah dan koreksinya |
+| `glowsh <fitur> on\|off` | nyalakan/matikan `greet`, `logo`, `sysinfo`, `sholat`, `calendar`, `moon`, `quote`, `recent`, `auto`, `seasonal`, `notify`, `typo`, `guard`, `stats` |
 | `glowsh notify <detik>` · `glowsh notify test` | batas waktu notifikasi / kirim notifikasi uji |
 | `glowsh name <nama>` · `glowsh name reset` | ganti nama di prompt & sapaan (tersimpan, bisa diubah kapan saja) |
 | `glowsh lang id\|en` | ganti bahasa |

@@ -96,11 +96,25 @@ It covers recursive deletes, `format`, `diskpart`, `git reset --hard`, `git push
 
 When a command runs for 30 seconds or more, you get a Windows notification such as *"✅ Command finished: npm install (2m 14s)"*. Change the threshold with `glowsh notify 60`.
 
-### 👋 A friendly greeting
+### 👋 A greeting dashboard
 
-```
-  ☀ Good afternoon, HP!   Saturday, 21 November 2026  |  battery 78%
-  Tip: "glowsh wallpaper" builds a theme from your wallpaper
+Every new terminal opens with a block-letter **GLOWSH logo** in your theme's gradient, plus panels that arrange themselves to fit the window:
+
+- **System**: Windows version, RAM and disk bars, uptime, and today's command count and streak
+- **Prayer times** for your city (Indonesian Ministry of Religious Affairs method: Fajr 20°, Isha 18°, 2-minute safety margin), with the next prayer highlighted and a countdown, calculated offline
+- **Calendar**: this month, today highlighted, Sundays and fixed national holidays in red, the **Hijri date** (rolls over at Maghrib) and a **moon drawing** that follows today's phase
+- **Quote of the day** in four categories: *fun* (dev humor), *life*, *faith*, *growth*
+- **Recent folders** with their git branch; jump back with `glowsh go 1`
+
+```powershell
+glowsh lokasi Bandung        # your city for prayer times (or: glowsh lokasi -6.91 107.61 Home)
+glowsh sholat                # today's prayer times
+glowsh hijri +1              # shift the Hijri date if your local announcement differs
+glowsh name Abid             # the name in your prompt & greeting
+glowsh quote faith           # a random quote from one category
+glowsh quote kinds fun,life  # which categories the daily quote uses
+glowsh go                    # list recent folders, then: glowsh go 2 / glowsh go web
+glowsh calendar off          # every panel can be turned off: logo, sysinfo, calendar, quote, recent
 ```
 
 ### 🩺 Glowsh Doctor
@@ -160,7 +174,11 @@ The whole interface speaks **English** and **Bahasa Indonesia**. Switch anytime 
 | `glowsh submit [name]` | share a theme with the gallery |
 | `glowsh doctor` | diagnose & fix display issues |
 | `glowsh settings` | see every feature and whether it's on |
-| `glowsh <feature> on\|off` | toggle `greet`, `auto`, `seasonal`, `notify`, `typo`, `guard`, `stats` |
+| `glowsh quote [category]` · `glowsh quote kinds <list>` | random quote / pick the daily quote categories |
+| `glowsh go [number\|name]` | jump to a recently visited folder |
+| `glowsh lokasi <city>` · `glowsh sholat` | set your location / show today's prayer times |
+| `glowsh hijri [+1\|-1\|0]` | Hijri date and correction |
+| `glowsh <feature> on\|off` | toggle `greet`, `logo`, `sysinfo`, `sholat`, `calendar`, `moon`, `quote`, `recent`, `auto`, `seasonal`, `notify`, `typo`, `guard`, `stats` |
 | `glowsh notify <seconds>` · `glowsh notify test` | notification threshold / send a test notification |
 | `glowsh name <name>` · `glowsh name reset` | set the name shown in your prompt & greeting (saved, edit anytime) |
 | `glowsh lang en\|id` | switch language |
