@@ -1,17 +1,20 @@
 <#
     Glowsh uninstaller - kembalikan tampilan terminal ke kondisi sebelum Glowsh.
+    Glowsh uninstaller - restores your terminal to how it was before Glowsh.
 
-    Dari PowerShell:
+    PowerShell:
         irm https://raw.githubusercontent.com/SQverse/glowsh/main/uninstall.ps1 | iex
 
-    Dari CMD:
+    CMD:
         powershell -NoProfile -ExecutionPolicy Bypass -c "irm https://raw.githubusercontent.com/SQverse/glowsh/main/uninstall.ps1 | iex"
+
+    Berdiri sendiri (tidak butuh glowsh.ps1) supaya tetap bisa jalan walau instalasi rusak.
 #>
 
 & {
 $ErrorActionPreference = 'Stop'
 
-# ============================================================ konfigurasi (harus sama dengan install.ps1)
+# ============================================================ konfigurasi (harus sama dengan glowsh.ps1)
 $GlowHome   = Join-Path $HOME '.glowsh'
 $BackupDir  = Join-Path $GlowHome 'backup-original'
 $MarkStart  = '# >>> glowsh >>>'
@@ -22,7 +25,13 @@ $WtTargets = [ordered]@{
     preview    = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json'
     unpackaged = Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\settings.json'
 }
- 
+
+# Bahasa: ikuti pilihan saat install, kalau tidak ada tebak dari Windows
+$lang = $null
+try { $lang = [string]([IO.File]::ReadAllText((Join-Path $GlowHome 'config.json')) | ConvertFrom-Json).lang } catch {}
+if ($lang -notin 'id', 'en') { $lang = if ((Get-Culture).Name -like 'id*' -or (Get-UICulture).Name -like 'id*') { 'id' } else { 'en' } }
+function L([string]$Id, [string]$En) { if ($lang -eq 'en') { $En } else { $Id } }
+
 function Write-Step([string]$Text) { Write-Host ''; Write-Host "[*] $Text" -ForegroundColor Cyan }
 function Write-Ok([string]$Text)   { Write-Host "    [OK] $Text" -ForegroundColor Green }
 function Write-Note([string]$Text) { Write-Host "    [!]  $Text" -ForegroundColor Yellow }
@@ -46,17 +55,17 @@ function Read-JsonLoose([string]$Path) {
         return ($clean | ConvertFrom-Json)
     }
 }
+$warnings = 0
 
 Write-Host ''
 Write-Host '  Glowsh uninstaller' -ForegroundColor Magenta
-Write-Host '  Ini akan menghapus blok Glowsh dari profil, mengembalikan tema Windows Terminal,'
-Write-Host '  warna console, dan Execution Policy ke kondisi sebelum Glowsh, lalu menghapus ~\.glowsh.'
+Write-Host ('  ' + (L 'Ini akan menghapus Glowsh dari profil, mengembalikan tema Windows Terminal, warna console,' 'This removes Glowsh from your profile and restores the Windows Terminal theme, console colors,'))
+Write-Host ('  ' + (L 'Execution Policy & pengaturan git ke kondisi sebelum Glowsh, lalu menghapus ~\.glowsh.' 'Execution Policy & git settings to how they were, then deletes ~\.glowsh.'))
 Write-Host ''
-if (-not (Read-YesNo 'Lanjut?')) { Write-Note 'Dibatalkan.'; return }
-$warnings = 0
+if (-not (Read-YesNo (L 'Lanjut?' 'Continue?'))) { Write-Note (L 'Dibatalkan.' 'Cancelled.'); return }
 
 # ============================================================ 1. profil
-Write-Step 'Hapus blok Glowsh dari profil PowerShell'
+Write-Step (L 'Hapus blok Glowsh dari profil PowerShell' 'Removing the Glowsh block from your PowerShell profile')
 $docs = [Environment]::GetFolderPath('MyDocuments')
 $pattern = '(?s)\s*' + [regex]::Escape($MarkStart) + '.*?' + [regex]::Escape($MarkEnd)
 foreach ($p in (Join-Path $docs 'WindowsPowerShell\Microsoft.PowerShell_profile.ps1'),
@@ -73,7 +82,7 @@ foreach ($p in (Join-Path $docs 'WindowsPowerShell\Microsoft.PowerShell_profile.
 }
 
 # ============================================================ 2. windows terminal
-Write-Step 'Kembalikan pengaturan Windows Terminal'
+Write-Step (L 'Kembalikan pengaturan Windows Terminal' 'Restoring Windows Terminal settings')
 if ($PSVersionTable.PSVersion.Major -lt 6) { Remove-TypeData System.Array -ErrorAction SilentlyContinue }
 foreach ($key in $WtTargets.Keys) {
     $path = $WtTargets[$key]
@@ -99,12 +108,12 @@ foreach ($key in $WtTargets.Keys) {
             }
         }
         [IO.File]::WriteAllText($path, ($json | ConvertTo-Json -Depth 32), (New-Object Text.UTF8Encoding $false))
-        Write-Ok "Dikembalikan ($key)"
-    } catch { Write-Bad "Gagal ($key): $($_.Exception.Message)"; $warnings++ }
+        Write-Ok $key
+    } catch { Write-Bad "$key : $($_.Exception.Message)"; $warnings++ }
 }
 
 # ============================================================ 3. console klasik
-Write-Step 'Kembalikan warna console klasik'
+Write-Step (L 'Kembalikan warna console klasik' 'Restoring classic console colors')
 $consoleBackup = Join-Path $BackupDir 'console.json'
 if (Test-Path $consoleBackup) {
     try {
@@ -113,44 +122,53 @@ if (Test-Path $consoleBackup) {
             if ($null -eq $prop.Value) { Remove-ItemProperty -Path $ConsoleKey -Name $prop.Name -ErrorAction SilentlyContinue }
             else { Set-ItemProperty -Path $ConsoleKey -Name $prop.Name -Value ([int]$prop.Value) -Type DWord }
         }
-        Write-Ok 'Selesai'
-    } catch { Write-Bad "Gagal: $($_.Exception.Message)"; $warnings++ }
-} else { Write-Note 'Backup tidak ditemukan, dilewati.' }
+        Write-Ok (L 'Selesai' 'Done')
+    } catch { Write-Bad $_.Exception.Message; $warnings++ }
+} else { Write-Note (L 'Backup tidak ditemukan, dilewati.' 'No backup found, skipped.') }
 
 # ============================================================ 4. execution policy
-Write-Step 'Kembalikan Execution Policy (CurrentUser)'
+Write-Step (L 'Kembalikan Execution Policy (CurrentUser)' 'Restoring the Execution Policy (CurrentUser)')
 $policyBackup = Join-Path $BackupDir 'executionpolicy.txt'
 if (Test-Path $policyBackup) {
     $origPolicy = (Get-Content $policyBackup -Raw).Trim()
-    if ((Get-ExecutionPolicy -Scope CurrentUser).ToString() -eq $origPolicy) { Write-Ok "Sudah $origPolicy" }
+    if ((Get-ExecutionPolicy -Scope CurrentUser).ToString() -eq $origPolicy) { Write-Ok $origPolicy }
     else {
         try { Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy $origPolicy -Force } catch {}
-        if ((Get-ExecutionPolicy -Scope CurrentUser).ToString() -eq $origPolicy) { Write-Ok "Dikembalikan ke $origPolicy" }
-        else { Write-Bad 'Gagal mengembalikan Execution Policy.'; $warnings++ }
+        if ((Get-ExecutionPolicy -Scope CurrentUser).ToString() -eq $origPolicy) { Write-Ok $origPolicy }
+        else { Write-Bad (L 'Gagal mengembalikan Execution Policy.' 'Could not restore the Execution Policy.'); $warnings++ }
     }
-} else { Write-Note 'Backup tidak ditemukan, dilewati.' }
+} else { Write-Note (L 'Backup tidak ditemukan, dilewati.' 'No backup found, skipped.') }
 
-# ============================================================ 5. terminal-icons (opsional)
-if (Get-Module -ListAvailable -Name Terminal-Icons) {
-    Write-Step 'Modul Terminal-Icons'
-    if (Read-YesNo 'Hapus juga modul Terminal-Icons?' $false) {
-        try { Uninstall-Module -Name Terminal-Icons -AllVersions -Force; Write-Ok 'Dihapus' }
-        catch { Write-Bad "Gagal: $($_.Exception.Message)"; $warnings++ }
-    } else { Write-Ok 'Dibiarkan' }
+# ============================================================ 5. git autocorrect
+$gitBackup = Join-Path $BackupDir 'git-autocorrect.txt'
+if ((Test-Path $gitBackup) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Step (L 'Kembalikan pengaturan git (help.autocorrect)' 'Restoring git settings (help.autocorrect)')
+    try {
+        $origGit = ([IO.File]::ReadAllText($gitBackup)).Trim()
+        if ($origGit -eq '<unset>') { git config --global --unset help.autocorrect } else { git config --global help.autocorrect $origGit }
+        Write-Ok (L 'Selesai' 'Done')
+    } catch { Write-Bad $_.Exception.Message; $warnings++ }
 }
 
-# ============================================================ 5b. clink (CMD)
+# ============================================================ 6. terminal-icons (opsional)
+if (Get-Module -ListAvailable -Name Terminal-Icons) {
+    Write-Step 'Terminal-Icons'
+    if (Read-YesNo (L 'Hapus juga modul Terminal-Icons?' 'Also remove the Terminal-Icons module?') $false) {
+        try { Uninstall-Module -Name Terminal-Icons -AllVersions -Force; Write-Ok (L 'Dihapus' 'Removed') }
+        catch { Write-Bad $_.Exception.Message; $warnings++ }
+    } else { Write-Ok (L 'Dibiarkan' 'Kept') }
+}
+
+# ============================================================ 7. clink (CMD)
 $clinkExe = Get-ChildItem (Join-Path $GlowHome 'clink') -Filter 'clink_*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($clinkExe) {
-    Write-Step 'Lepas Clink dari CMD'
-    try {
-        & $clinkExe.FullName autorun uninstall | Out-Null
-        Write-Ok 'Selesai'
-    } catch { Write-Bad "Gagal: $($_.Exception.Message)"; $warnings++ }
+    Write-Step (L 'Lepas Clink dari CMD' 'Detaching Clink from CMD')
+    try { & $clinkExe.FullName autorun uninstall | Out-Null; Write-Ok (L 'Selesai' 'Done') }
+    catch { Write-Bad $_.Exception.Message; $warnings++ }
 }
 
-# ============================================================ 5c. perintah glowsh di PATH
-Write-Step 'Hapus perintah glowsh dari PATH'
+# ============================================================ 8. perintah glowsh di PATH
+Write-Step (L 'Hapus perintah glowsh dari PATH' 'Removing glowsh from PATH')
 try {
     $binDir = Join-Path $GlowHome 'bin'
     $envKey = Get-Item 'HKCU:\Environment'
@@ -161,19 +179,19 @@ try {
         [Environment]::SetEnvironmentVariable('GLOWSH_REFRESH', '1', 'User')
         [Environment]::SetEnvironmentVariable('GLOWSH_REFRESH', $null, 'User')
     }
-    Write-Ok 'Selesai'
-} catch { Write-Bad "Gagal: $($_.Exception.Message)"; $warnings++ }
+    Write-Ok (L 'Selesai' 'Done')
+} catch { Write-Bad $_.Exception.Message; $warnings++ }
 
-# ============================================================ 6. folder glowsh
-Write-Step 'Hapus folder ~\.glowsh'
+# ============================================================ 9. folder glowsh
+Write-Step (L 'Hapus folder ~\.glowsh' 'Deleting ~\.glowsh')
 if (Test-Path $GlowHome) {
-    try { Remove-Item $GlowHome -Recurse -Force; Write-Ok 'Dihapus' }
-    catch { Write-Bad 'Sebagian file masih dipakai. Tutup semua terminal lalu hapus manual:'; Write-Host "         $GlowHome"; $warnings++ }
-} else { Write-Ok 'Tidak ada' }
+    try { Remove-Item $GlowHome -Recurse -Force; Write-Ok (L 'Dihapus' 'Deleted') }
+    catch { Write-Bad (L 'Sebagian file masih dipakai. Tutup semua terminal lalu hapus manual:' 'Some files are still in use. Close all terminals and delete it manually:'); Write-Host "         $GlowHome"; $warnings++ }
+} else { Write-Ok (L 'Tidak ada' 'Nothing to delete') }
 
 Write-Host ''
-if ($warnings -eq 0) { Write-Host '  Glowsh sudah dihapus. Tutup terminal ini dan buka yang baru.' -ForegroundColor Green }
-else { Write-Host "  Selesai dengan $warnings peringatan (lihat di atas)." -ForegroundColor Yellow }
-Write-Host '  (Font Meslo Nerd Font tetap terpasang karena tidak mengganggu; hapus lewat Settings > Fonts kalau mau.)' -ForegroundColor DarkGray
+if ($warnings -eq 0) { Write-Host ('  ' + (L 'Glowsh sudah dihapus. Tutup terminal ini dan buka yang baru.' 'Glowsh has been removed. Close this terminal and open a new one.')) -ForegroundColor Green }
+else { Write-Host ('  ' + (L "Selesai dengan $warnings peringatan (lihat di atas)." "Finished with $warnings warnings (see above).")) -ForegroundColor Yellow }
+Write-Host ('  ' + (L '(Font Meslo Nerd Font, Windows Terminal & PSReadLine baru tetap terpasang karena tidak mengganggu.)' '(Meslo Nerd Font, Windows Terminal & the newer PSReadLine stay installed since they are harmless.)')) -ForegroundColor DarkGray
 Write-Host ''
 }
